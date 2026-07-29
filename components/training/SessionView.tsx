@@ -1,0 +1,264 @@
+import React, { useState } from 'react';
+import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
+import { Card } from '../Card';
+import { useAppTheme } from '../../lib/theme-context';
+import { radius } from '../../constants/theme';
+import { Mesocycle, MesoSession } from '../../lib/engine/types';
+import { getSessionDef, computeWeekRIR, suggestProgression, totalSessions } from '../../lib/engine/workout-engine';
+
+const PHASE_LABEL: Record<string, string> = { volumen: 'Volume', mantenimiento: 'Maintenance', definicion: 'Cut' };
+const LEVEL_LABEL: Record<string, string> = { principiante: 'Beginner', avanzado: 'Advanced' };
+const JOINTS = ['Shoulder', 'Elbow', 'Wrist', 'Knee', 'Hip', 'Lower back', 'Other'];
+
+export type SessionFeedback = {
+  difficulty: 'facil' | 'normal' | 'dificil' | 'limite';
+  joint_pain: boolean;
+  joint: string | null;
+  sore_exercise: string | null;
+  note: string;
+};
+
+export function SessionView({
+  meso,
+  sessions,
+  viewingIndex,
+  onViewSession,
+  onSaveSet,
+  onCompleteSession,
+  onEndEarly,
+  onBack,
+  onDuplicate,
+}: {
+  meso: Mesocycle;
+  sessions: Record<number, MesoSession>;
+  viewingIndex: number;
+  onViewSession: (i: number) => void;
+  onSaveSet: (exerciseId: string, setIndex: number, kg: string, reps: string) => void;
+  onCompleteSession: (feedback: SessionFeedback) => void;
+  onEndEarly: () => void;
+  onBack: () => void;
+  onDuplicate: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedback, setFeedback] = useState<SessionFeedback>({ difficulty: 'normal', joint_pain: false, joint: null, sore_exercise: null, note: '' });
+
+  const total = totalSessions(meso);
+  const sessDef = getSessionDef(meso, viewingIndex);
+  const isCurrent = !meso.finished && viewingIndex === meso.current_index;
+  const isFuture = !meso.finished && viewingIndex > meso.current_index;
+  const sessionData = sessions[viewingIndex];
+
+  const perWeek = meso.days_per_week;
+  const totalWeeks = meso.duration_weeks + 1;
+  const curWeek = Math.floor(viewingIndex / perWeek) + 1;
+
+  function getSetValue(exId: string, setIdx: number, field: 'kg' | 'reps'): string {
+    const set = sessionData?.sets.find((s) => s.exercise_id === exId && s.set_index === setIdx);
+    const v = set ? set[field] : null;
+    return v == null ? '' : String(v);
+  }
+
+  function openFeedback() {
+    setFeedback({ difficulty: 'normal', joint_pain: false, joint: null, sore_exercise: null, note: '' });
+    setFeedbackOpen(true);
+  }
+
+  return (
+    <View>
+      <Pressable onPress={onBack} style={{ marginBottom: 10 }}>
+        <Text style={{ color: colors.text2 }}>← Mesocycles</Text>
+      </Pressable>
+
+      {meso.finished && (
+        <Card>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, textAlign: 'center' }}>Mesocycle completed</Text>
+          <Text style={{ color: colors.text2, fontSize: 12, textAlign: 'center', marginTop: 4 }}>
+            {meso.duration_weeks} weeks + deload · {PHASE_LABEL[meso.phase]} · {LEVEL_LABEL[meso.level]}
+          </Text>
+          <Pressable onPress={onDuplicate} style={{ backgroundColor: colors.accent, borderRadius: radius.md, padding: 12, alignItems: 'center', marginTop: 10 }}>
+            <Text style={{ color: colors.accentText, fontWeight: '700' }}>Duplicate this mesocycle</Text>
+          </Pressable>
+        </Card>
+      )}
+
+      {!meso.finished && (
+        <View style={{ height: 6, borderRadius: 99, backgroundColor: colors.surface2, marginBottom: 12, overflow: 'hidden' }}>
+          <View style={{ height: '100%', width: `${Math.round((meso.current_index / total) * 100)}%`, backgroundColor: colors.accent }} />
+        </View>
+      )}
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+        {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((w) => {
+          const isDeloadW = w === meso.duration_weeks + 1;
+          const on = w === curWeek;
+          return (
+            <Pressable
+              key={w}
+              onPress={() => onViewSession((w - 1) * perWeek)}
+              style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: on ? colors.accent : colors.surface2, marginRight: 6 }}
+            >
+              <Text style={{ color: on ? colors.accentText : colors.text2, fontSize: 12, fontWeight: '600' }}>
+                {isDeloadW ? 'Deload' : `Week ${w}`}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+        {Array.from({ length: perWeek }, (_, d) => {
+          const sIdx = (curWeek - 1) * perWeek + d;
+          if (sIdx >= total) return null;
+          const done = sessions[sIdx]?.completed;
+          const on = sIdx === viewingIndex;
+          return (
+            <Pressable
+              key={d}
+              onPress={() => onViewSession(sIdx)}
+              style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: on ? colors.accent : colors.surface2, marginRight: 6 }}
+            >
+              <Text style={{ color: on ? colors.accentText : colors.text2, fontSize: 12, fontWeight: '600' }}>
+                {done ? '✓ ' : ''}D{d + 1}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <Card>
+        <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{sessDef.dayLabel}</Text>
+        <Text style={{ color: sessDef.isDeload ? colors.warning : colors.text2, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+          Week {sessDef.week}
+          {sessDef.isDeload ? ' · DELOAD' : ''} · Session {viewingIndex + 1}/{total}
+        </Text>
+        <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+          {sessDef.isDeload ? 'High RIR (4-5) · Deload' : `Target RIR: ${computeWeekRIR(sessDef.week, meso.duration_weeks, meso.level)}`}
+        </Text>
+      </Card>
+
+      {sessDef.exercises.map((ex) => {
+        const suggestion = isFuture ? null : suggestProgression(meso, sessions, ex.id, ex.reps, viewingIndex, sessDef.isDeload);
+        const isPR = sessionData?.sets.some((s) => s.exercise_id === ex.id && s.is_pr);
+        return (
+          <Card key={ex.id}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
+                {ex.name}
+                {isPR ? ' 🏆' : ''}
+              </Text>
+              <Text style={{ color: colors.text2, fontSize: 12 }}>
+                {ex.sets}×{ex.reps}
+              </Text>
+            </View>
+            {suggestion && <Text style={{ color: colors.accent, fontSize: 12, marginTop: 4 }}>{suggestion.text}</Text>}
+            {isFuture ? (
+              <Text style={{ color: colors.text2, fontSize: 12, marginTop: 8 }}>Not your turn yet — preview only</Text>
+            ) : (
+              <View style={{ marginTop: 10 }}>
+                {Array.from({ length: ex.sets }, (_, i) => i).map((i) => (
+                  <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={{ color: colors.text2, fontSize: 12, width: 16, textAlign: 'center' }}>{i + 1}</Text>
+                    <TextInput
+                      defaultValue={getSetValue(ex.id, i, 'kg')}
+                      onEndEditing={(e) => onSaveSet(ex.id, i, e.nativeEvent.text, getSetValue(ex.id, i, 'reps'))}
+                      editable={isCurrent}
+                      keyboardType="decimal-pad"
+                      placeholder="kg"
+                      placeholderTextColor={colors.text2}
+                      style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: 10, padding: 9, color: colors.text, textAlign: 'center' }}
+                    />
+                    <TextInput
+                      defaultValue={getSetValue(ex.id, i, 'reps')}
+                      onEndEditing={(e) => onSaveSet(ex.id, i, getSetValue(ex.id, i, 'kg'), e.nativeEvent.text)}
+                      editable={isCurrent}
+                      keyboardType="number-pad"
+                      placeholder="reps"
+                      placeholderTextColor={colors.text2}
+                      style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: 10, padding: 9, color: colors.text, textAlign: 'center' }}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+          </Card>
+        );
+      })}
+
+      {isCurrent && !feedbackOpen && (
+        <Pressable onPress={openFeedback} style={{ backgroundColor: colors.accent, borderRadius: radius.md, padding: 14, alignItems: 'center', marginTop: 4 }}>
+          <Text style={{ color: colors.accentText, fontWeight: '700' }}>
+            Complete session{viewingIndex + 1 === total ? ' (last)' : ''}
+          </Text>
+        </Pressable>
+      )}
+
+      {isCurrent && feedbackOpen && (
+        <Card>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginBottom: 10 }}>How did the session go?</Text>
+
+          <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Overall difficulty</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 }}>
+            {[
+              ['facil', 'Very easy'],
+              ['normal', 'Normal'],
+              ['dificil', 'Hard'],
+              ['limite', 'At the limit'],
+            ].map(([id, label]) => (
+              <Pressable
+                key={id}
+                onPress={() => setFeedback((f) => ({ ...f, difficulty: id as SessionFeedback['difficulty'] }))}
+                style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: feedback.difficulty === id ? colors.accent : colors.surface2, marginRight: 6, marginBottom: 6 }}
+              >
+                <Text style={{ color: feedback.difficulty === id ? colors.accentText : colors.text2, fontSize: 12, fontWeight: '600' }}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Joint pain?</Text>
+          <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+            <Pressable onPress={() => setFeedback((f) => ({ ...f, joint_pain: false, joint: null }))} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, backgroundColor: !feedback.joint_pain ? colors.accent : colors.surface2, marginRight: 6 }}>
+              <Text style={{ color: !feedback.joint_pain ? colors.accentText : colors.text2, fontSize: 12, fontWeight: '600' }}>No</Text>
+            </Pressable>
+            <Pressable onPress={() => setFeedback((f) => ({ ...f, joint_pain: true }))} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, backgroundColor: feedback.joint_pain ? colors.accent : colors.surface2 }}>
+              <Text style={{ color: feedback.joint_pain ? colors.accentText : colors.text2, fontSize: 12, fontWeight: '600' }}>Yes</Text>
+            </Pressable>
+          </View>
+          {feedback.joint_pain && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              {JOINTS.map((j) => (
+                <Pressable key={j} onPress={() => setFeedback((f) => ({ ...f, joint: j }))} style={{ paddingVertical: 7, paddingHorizontal: 12, borderRadius: 10, backgroundColor: feedback.joint === j ? colors.accent : colors.surface2, marginRight: 6 }}>
+                  <Text style={{ color: feedback.joint === j ? colors.accentText : colors.text2, fontSize: 12 }}>{j}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+
+          <TextInput
+            value={feedback.note}
+            onChangeText={(v) => setFeedback((f) => ({ ...f, note: v }))}
+            placeholder="Optional note"
+            placeholderTextColor={colors.text2}
+            style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, color: colors.text, marginBottom: 12, borderWidth: 1, borderColor: colors.border }}
+          />
+
+          <Pressable onPress={() => { onCompleteSession(feedback); setFeedbackOpen(false); }} style={{ backgroundColor: colors.accent, borderRadius: radius.md, padding: 14, alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: colors.accentText, fontWeight: '700' }}>Save and complete session</Text>
+          </Pressable>
+          <Pressable onPress={() => setFeedbackOpen(false)} style={{ padding: 10, alignItems: 'center' }}>
+            <Text style={{ color: colors.text2 }}>Cancel</Text>
+          </Pressable>
+        </Card>
+      )}
+
+      {!isCurrent && !meso.finished && viewingIndex < meso.current_index && (
+        <Text style={{ color: colors.text2, fontSize: 12, textAlign: 'center', marginTop: 8 }}>Viewing a completed session</Text>
+      )}
+
+      {!meso.finished && (
+        <Pressable onPress={onEndEarly} style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 12, alignItems: 'center', marginTop: 10 }}>
+          <Text style={{ color: colors.danger, fontWeight: '600' }}>End mesocycle early</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
