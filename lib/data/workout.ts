@@ -12,6 +12,7 @@ export type MesoSummary = {
   duration_weeks: number;
   days_per_week: number;
   current_index: number;
+  started: boolean;
   finished: boolean;
   created_at: string;
   completed_sessions: number;
@@ -20,7 +21,7 @@ export type MesoSummary = {
 export async function fetchMesocycles(userId: string): Promise<MesoSummary[]> {
   const { data: mesos, error } = await supabase
     .from('mesocycles')
-    .select('id, level, phase, duration_weeks, days_per_week, current_index, finished, created_at')
+    .select('id, level, phase, duration_weeks, days_per_week, current_index, started, finished, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -42,7 +43,7 @@ export async function fetchMesocycles(userId: string): Promise<MesoSummary[]> {
 export async function fetchMesocycleDetail(id: string): Promise<Mesocycle> {
   const { data: meso, error } = await supabase
     .from('mesocycles')
-    .select('id, height_cm, level, phase, duration_weeks, days_per_week, current_index, finished')
+    .select('id, height_cm, level, phase, duration_weeks, days_per_week, current_index, started, finished')
     .eq('id', id)
     .single();
   if (error) throw error;
@@ -117,7 +118,6 @@ export async function fetchSessions(mesocycleId: string, userId: string): Promis
 }
 
 export type NewMesoInput = {
-  height_cm: number | null;
   level: Level;
   phase: Phase;
   duration_weeks: number;
@@ -130,11 +130,11 @@ export async function createMesocycle(userId: string, input: NewMesoInput): Prom
     .from('mesocycles')
     .insert({
       user_id: userId,
-      height_cm: input.height_cm,
       level: input.level,
       phase: input.phase,
       duration_weeks: input.duration_weeks,
       days_per_week: input.days_per_week,
+      started: false,
     })
     .select('id')
     .single();
@@ -168,10 +168,26 @@ export async function createMesocycle(userId: string, input: NewMesoInput): Prom
   return mesoId;
 }
 
+// Marca el meso como "empezado" — solo si no hay otro ya en curso para este usuario
+export async function startMesocycle(mesocycleId: string, userId: string) {
+  const { data: active, error: errCheck } = await supabase
+    .from('mesocycles')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('started', true)
+    .eq('finished', false)
+    .neq('id', mesocycleId);
+  if (errCheck) throw errCheck;
+  if (active && active.length) {
+    throw new Error('You already have a mesocycle in progress. Finish or end it before starting a new one.');
+  }
+  const { error } = await supabase.from('mesocycles').update({ started: true }).eq('id', mesocycleId);
+  if (error) throw error;
+}
+
 export async function duplicateMesocycle(baseId: string, userId: string): Promise<NewMesoInput> {
   const detail = await fetchMesocycleDetail(baseId);
   return {
-    height_cm: detail.height_cm,
     level: detail.level,
     phase: detail.phase,
     duration_weeks: detail.duration_weeks,

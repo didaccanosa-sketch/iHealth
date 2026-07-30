@@ -11,7 +11,6 @@ import { NewMesoInput } from '../../lib/data/workout';
 
 type WizardDay = { label: string; exercises: { name: string; muscle_group: MuscleGroup; sets: number; reps: string }[] };
 type WizardForm = {
-  height_cm: string;
   level: Level;
   phase: Phase;
   duration_weeks: number;
@@ -62,14 +61,13 @@ export function MesoWizard({
   const [form, setForm] = useState<WizardForm>(() =>
     initial
       ? {
-          height_cm: initial.height_cm != null ? String(initial.height_cm) : '',
           level: initial.level,
           phase: initial.phase,
           duration_weeks: initial.duration_weeks,
           days_per_week: initial.days_per_week,
           days: initial.days,
         }
-      : { height_cm: '', level: 'principiante', phase: 'volumen', duration_weeks: 6, days_per_week: 4, days: [] }
+      : { level: 'principiante', phase: 'volumen', duration_weeks: 6, days_per_week: 4, days: [] }
   );
   const [dayIdx, setDayIdx] = useState(0);
   const [exGroup, setExGroup] = useState<MuscleGroup | null>(null);
@@ -131,7 +129,7 @@ export function MesoWizard({
     return (q ? list.filter((n) => n.toLowerCase().includes(q)) : list).slice(0, 8);
   }, [exGroup, query]);
 
-  const warnings = useMemo(() => (step === 3 ? analyzeSplit(form.days as any, form.phase, form.level) : []), [step, form]);
+  const warnings = useMemo(() => (step === 3 ? analyzeSplit(form.days as any, form.phase, form.level) : ''), [step, form]);
 
   const day = form.days[dayIdx];
 
@@ -144,14 +142,6 @@ export function MesoWizard({
       {step === 1 && (
         <Card>
           <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 12 }}>New mesocycle — basic info</Text>
-
-          <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Height (cm)</Text>
-          <TextInput
-            value={form.height_cm}
-            onChangeText={(v) => setForm((f) => ({ ...f, height_cm: v }))}
-            keyboardType="numeric"
-            style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, color: colors.text, marginBottom: 14, borderWidth: 1, borderColor: colors.border }}
-          />
 
           <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Level</Text>
           <View style={{ flexDirection: 'row', marginBottom: 14 }}>
@@ -337,12 +327,8 @@ export function MesoWizard({
       {step === 3 && (
         <>
           <Card>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: 10 }}>Routine review</Text>
-            {warnings.map((w, i) => (
-              <Text key={i} style={{ color: colors.text2, fontSize: 12, marginBottom: 6, lineHeight: 17 }}>
-                {w}
-              </Text>
-            ))}
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: 10 }}>What I think of this routine</Text>
+            <Text style={{ color: colors.text2, fontSize: 13, lineHeight: 20 }}>{warnings}</Text>
           </Card>
           {form.days.map((d, i) => (
             <Card key={i}>
@@ -361,7 +347,6 @@ export function MesoWizard({
             <Pressable
               onPress={() =>
                 onCreate({
-                  height_cm: form.height_cm ? parseFloat(form.height_cm) : null,
                   level: form.level,
                   phase: form.phase,
                   duration_weeks: form.duration_weeks,

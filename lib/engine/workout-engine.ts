@@ -159,42 +159,77 @@ function weeklySetsByGroup(days: MesoDay[]): Record<MuscleGroup, number> {
   return sums;
 }
 
-export function analyzeSplit(days: MesoDay[], phase: Phase, level: Level): string[] {
+function joinList(items: string[]): string {
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+export function analyzeSplit(days: MesoDay[], phase: Phase, level: Level): string {
   const sums = weeklySetsByGroup(days);
   const range = VOLUME_RANGES[level] || VOLUME_RANGES.principiante;
-  const warns: string[] = [];
+
+  const missingGroups: string[] = [];
+  const lowGroups: string[] = [];
+  const highGroups: string[] = [];
 
   BIG_GROUPS.forEach((gid) => {
     const label = MUSCLE_GROUPS.find((m) => m.id === gid)!.label;
-    if (sums[gid] === 0) {
-      warns.push(`No ${label} exercise anywhere in this mesocycle.`);
-    } else if (sums[gid] < range.min) {
-      warns.push(
-        `${label}: only ${sums[gid]} sets/week, a bit low (recommended ${range.min}-${range.max} for ${level === 'avanzado' ? 'an advanced level' : 'steady progress'}).`
-      );
-    } else if (sums[gid] > range.max) {
-      warns.push(`${label}: ${sums[gid]} sets/week, might be too much volume (recommended ${range.min}-${range.max}).`);
-    }
+    if (sums[gid] === 0) missingGroups.push(label);
+    else if (sums[gid] < range.min) lowGroups.push(label);
+    else if (sums[gid] > range.max) highGroups.push(label);
   });
 
-  if (sums.core === 0) warns.push('No core work — you can add it yourself from the exercise search.');
-  if (sums.pecho > 0 && sums.espalda === 0) warns.push('Pushing (chest) but no pulling (back) — risk of shoulder imbalance.');
-  if (sums.espalda > 0 && sums.pecho === 0) warns.push('Pulling (back) but no pushing (chest).');
+  const dayIssues = days.filter((d) => d.exercises.length < 3 || d.exercises.length > 7);
+  const pushNoPull = sums.pecho > 0 && sums.espalda === 0;
+  const pullNoPush = sums.espalda > 0 && sums.pecho === 0;
+  const totalSets = Object.values(sums).reduce((a, b) => a + b, 0);
+  const highVolumeInCut = phase === 'definicion' && totalSets > range.max * BIG_GROUPS.length * 0.7;
 
-  days.forEach((d) => {
-    if (d.exercises.length < 3) warns.push(`"${d.label}" has very few exercises (${d.exercises.length}), 3-6 is recommended.`);
-    if (d.exercises.length > 7) warns.push(`"${d.label}" has ${d.exercises.length} exercises, might be too much for one session.`);
-  });
+  const hasIssues =
+    missingGroups.length || lowGroups.length || highGroups.length || dayIssues.length || pushNoPull || pullNoPush || sums.core === 0 || highVolumeInCut;
 
-  if (phase === 'definicion') {
-    const totalSets = Object.values(sums).reduce((a, b) => a + b, 0);
-    if (totalSets > range.max * BIG_GROUPS.length * 0.7) {
-      warns.push('Fairly high total volume while cutting. In a calorie deficit, more volume is not always better — consider trimming if recovery feels off.');
-    }
+  const parts: string[] = [];
+
+  parts.push(
+    hasIssues
+      ? "Here's how this split looks."
+      : 'This split looks solid — good coverage across muscle groups and a sensible amount of weekly volume.'
+  );
+
+  if (missingGroups.length) {
+    parts.push(
+      `You don't have any ${joinList(missingGroups)} work anywhere in the mesocycle, which is worth fixing before you get going.`
+    );
   }
+  if (lowGroups.length) {
+    parts.push(
+      `${joinList(lowGroups)} ${lowGroups.length > 1 ? 'look' : 'looks'} a bit light — under the ${range.min}-${range.max} sets/week that tends to work well ${level === 'avanzado' ? 'at an advanced level' : 'for steady progress'}, so ${lowGroups.length > 1 ? 'those' : 'that'} might lag behind the rest.`
+    );
+  }
+  if (highGroups.length) {
+    parts.push(
+      `${joinList(highGroups)} ${highGroups.length > 1 ? 'are' : 'is'} on the high side, above ${range.max} sets/week — not a problem on its own, just keep an eye on how you're recovering.`
+    );
+  }
+  if (pushNoPull) parts.push("There's pushing work (chest) in here but nothing pulling (back), which can throw your shoulders out of balance over time.");
+  if (pullNoPush) parts.push("You've got pulling work (back) but no pushing (chest) — worth adding some for balance.");
+  if (sums.core === 0) parts.push("There's no core work either, though you can always add some later from the exercise search.");
+  if (dayIssues.length) {
+    dayIssues.forEach((d) => {
+      parts.push(
+        d.exercises.length < 3
+          ? `"${d.label}" only has ${d.exercises.length} exercise${d.exercises.length === 1 ? '' : 's'} — usually 3-6 makes for a fuller session.`
+          : `"${d.label}" has ${d.exercises.length} exercises, which might be a lot to get through in one sitting.`
+      );
+    });
+  }
+  if (highVolumeInCut) {
+    parts.push("You're also cutting with fairly high total volume — in a calorie deficit, more isn't always better, so trim it back if recovery starts to suffer.");
+  }
+  if (hasIssues) parts.push("None of this is a dealbreaker — you can always tweak sets and exercises later.");
 
-  if (!warns.length) warns.push('The split looks balanced: good muscle group coverage and reasonable weekly volume.');
-  return warns;
+  return parts.join(' ');
 }
 
 // PR (Personal Record) — fórmula de Epley para estimar el 1RM

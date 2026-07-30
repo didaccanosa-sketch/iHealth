@@ -118,7 +118,7 @@ export function SessionView({
       </Pressable>
 
       {meso.finished && (
-        <Card>
+        <Card variant="glass">
           <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, textAlign: 'center' }}>Mesocycle completed</Text>
           <Text style={{ color: colors.text2, fontSize: 12, textAlign: 'center', marginTop: 4 }}>
             {meso.duration_weeks} weeks + deload · {PHASE_LABEL[meso.phase]} · {LEVEL_LABEL[meso.level]}
@@ -172,7 +172,7 @@ export function SessionView({
         })}
       </ScrollView>
 
-      <Card>
+      <Card variant="glass">
         <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{sessDef.dayLabel}</Text>
         <Text style={{ color: sessDef.isDeload ? colors.warning : colors.text2, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
           Week {sessDef.week}

@@ -173,9 +173,11 @@ create table if not exists mesocycles (
   duration_weeks int not null default 6,
   days_per_week int not null default 4,
   current_index int not null default 0,
+  started boolean not null default false,
   finished boolean not null default false,
   created_at timestamptz default now()
 );
+alter table mesocycles add column if not exists started boolean not null default false;
 
 alter table mesocycles enable row level security;
 drop policy if exists "mesocycles: all own" on mesocycles;

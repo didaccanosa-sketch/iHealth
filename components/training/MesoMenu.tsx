@@ -30,7 +30,7 @@ export function MesoMenu({
 
   if (loading) return <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />;
 
-  const activeMeso = mesos.find((m) => !m.finished);
+  const activeMeso = mesos.find((m) => m.started && !m.finished);
 
   return (
     <View>
@@ -41,24 +41,14 @@ export function MesoMenu({
         </Pressable>
       )}
 
-      {activeMeso ? (
+      {activeMeso && (
         <Pressable onPress={() => onSelect(activeMeso.id)}>
-          <Card style={{ backgroundColor: colors.surface2, borderColor: colors.accent }}>
+          <Card variant="glass" style={{ borderColor: colors.accent }}>
             <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700', marginBottom: 4 }}>MESOCYCLE IN PROGRESS</Text>
             <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>
               Continue {PHASE_LABEL[activeMeso.phase]} · {activeMeso.duration_weeks} weeks
             </Text>
-            <Text style={{ color: colors.text2, fontSize: 12, marginTop: 4 }}>
-              Finish or end it early before starting a new one.
-            </Text>
           </Card>
-        </Pressable>
-      ) : (
-        <Pressable
-          onPress={onCreate}
-          style={{ backgroundColor: colors.accent, borderRadius: radius.md, padding: 14, alignItems: 'center', marginBottom: 16 }}
-        >
-          <Text style={{ color: colors.accentText, fontWeight: '700' }}>+ New mesocycle</Text>
         </Pressable>
       )}
 
@@ -73,6 +63,7 @@ export function MesoMenu({
           const total = totalSessions(m);
           const pct = total ? Math.round((m.completed_sessions / total) * 100) : 0;
           const isConfirming = confirmingId === m.id;
+          const isDraft = !m.started && !m.finished;
           return (
             <Card key={m.id}>
               <Pressable onPress={() => !isConfirming && onSelect(m.id)}>
@@ -85,14 +76,25 @@ export function MesoMenu({
                       {LEVEL_LABEL[m.level]} · {m.days_per_week} days/week
                     </Text>
                   </View>
-                  <Text style={{ color: m.finished ? colors.success : colors.accent, fontSize: 12, fontWeight: '700', marginRight: 10 }}>
-                    {m.finished ? 'Finished' : 'In progress'}
+                  <Text
+                    style={{
+                      color: m.finished ? colors.success : isDraft ? colors.warning : colors.accent,
+                      fontSize: 12,
+                      fontWeight: '700',
+                      marginRight: 10,
+                    }}
+                  >
+                    {m.finished ? 'Finished' : isDraft ? 'Draft' : 'In progress'}
                   </Text>
                   <Pressable onPress={() => setConfirmingId(isConfirming ? null : m.id)} hitSlop={8}>
                     <Feather name="trash-2" size={16} color={colors.text2} />
                   </Pressable>
                 </View>
-                {!m.finished ? (
+                {m.finished ? (
+                  <Text style={{ color: colors.text2, fontSize: 12, marginTop: 8 }}>{total} sessions completed</Text>
+                ) : isDraft ? (
+                  <Text style={{ color: colors.text2, fontSize: 12, marginTop: 8 }}>Not started yet — tap to review and start it</Text>
+                ) : (
                   <>
                     <View style={{ height: 6, borderRadius: 99, backgroundColor: colors.surface2, marginTop: 10, marginBottom: 4, overflow: 'hidden' }}>
                       <View style={{ height: '100%', width: `${pct}%`, backgroundColor: colors.accent, borderRadius: 99 }} />
@@ -101,8 +103,6 @@ export function MesoMenu({
                       Session {m.current_index + 1}/{total} ({pct}%)
                     </Text>
                   </>
-                ) : (
-                  <Text style={{ color: colors.text2, fontSize: 12, marginTop: 8 }}>{total} sessions completed</Text>
                 )}
               </Pressable>
 
@@ -129,6 +129,13 @@ export function MesoMenu({
           );
         })
       )}
+
+      <Pressable
+        onPress={onCreate}
+        style={{ backgroundColor: colors.accent, borderRadius: radius.md, padding: 14, alignItems: 'center', marginTop: 8 }}
+      >
+        <Text style={{ color: colors.accentText, fontWeight: '700' }}>+ New mesocycle</Text>
+      </Pressable>
     </View>
   );
 }

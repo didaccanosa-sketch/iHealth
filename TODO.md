@@ -19,6 +19,14 @@
 - [x] La IA de análisis de comidas ahora corrige ortografía/mayúsculas en la descripción (pendiente **redesplegar la función** para que tenga efecto: `supabase functions deploy analyze-meal`)
 
 ## En cola (próximo)
+- [ ] **Chat con IA para crear el mesociclo** — al pulsar "Build it with AI chat" en el chooser
+      de creación: conversación libre sobre el objetivo, la IA hace 2-3 preguntas de
+      seguimiento (días que entrenas, tiempo disponible, duración del meso), y al final
+      propone el mesociclo completo (fase/nivel/duración/días/ejercicios) antes de crear
+      nada, con opción de aceptarlo tal cual o pasar al wizard manual con esos datos
+      precargados. Necesita una función serverless nueva (como `analyze-meal`) que reciba
+      la conversación y devuelva el JSON de la estructura del meso. Diseño ya propuesto,
+      pendiente de construir
 - [ ] **Eliminar mesociclos** — de momento solo se pueden crear/terminar, no borrar
 - [ ] **No permitir crear un mesociclo nuevo mientras haya uno en curso**
 - [ ] **Menú de tipo de entrenamiento al entrar en Training** — tarjetas: Hipertrofia/Fuerza (lo ya construido), Cardio ("Coming soon"), Funcional/CrossFit ("Coming soon")

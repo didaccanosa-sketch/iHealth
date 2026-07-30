@@ -73,6 +73,7 @@ export type Mesocycle = {
   duration_weeks: number;
   days_per_week: number;
   current_index: number;
+  started: boolean;
   finished: boolean;
   days: MesoDay[];
 };

@@ -157,7 +157,7 @@ export default function NutritionScreen() {
 
   return (
     <Screen title="Nutrition">
-      <Card>
+      <Card variant="glass">
         <MacroBar label="Calories" current={status.totals.kcal} goal={status.goals.kcal} unit="" color={colors.accent} />
         <MacroBar label="Protein" current={status.totals.protein_g} goal={status.goals.protein_g} unit="g" color={colors.vizProtein} />
         <MacroBar label="Carbs" current={status.totals.carbs_g} goal={status.goals.carbs_g} unit="g" color={colors.warning} />

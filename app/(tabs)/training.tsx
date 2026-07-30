@@ -8,6 +8,8 @@ import { MesoMenu } from '../../components/training/MesoMenu';
 import { MesoWizard } from '../../components/training/MesoWizard';
 import { SessionView, SessionFeedback } from '../../components/training/SessionView';
 import { TrainingTypeMenu } from '../../components/training/TrainingTypeMenu';
+import { CreateMesoChooser } from '../../components/training/CreateMesoChooser';
+import { DraftPreview } from '../../components/training/DraftPreview';
 import {
   fetchMesocycles,
   fetchMesocycleDetail,
@@ -18,6 +20,7 @@ import {
   createMesocycle,
   duplicateMesocycle,
   deleteMesocycle,
+  startMesocycle,
   saveSet,
   checkAndRecordPR,
   completeSession as dataCompleteSession,
@@ -29,7 +32,7 @@ import {
 import { Mesocycle, MesoSession } from '../../lib/engine/types';
 import { totalSessions, estimate1RM } from '../../lib/engine/workout-engine';
 
-type View = 'typeMenu' | 'menu' | 'wizard' | 'session';
+type View = 'typeMenu' | 'menu' | 'createChoice' | 'wizard' | 'session';
 
 export default function TrainingScreen() {
   const { colors } = useAppTheme();
@@ -47,6 +50,7 @@ export default function TrainingScreen() {
   const [sessions, setSessions] = useState<Record<number, MesoSession>>({});
   const [viewingIndex, setViewingIndex] = useState<number>(0);
   const [loadingMeso, setLoadingMeso] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const [menuError, setMenuError] = useState<string | null>(null);
   const [mesoError, setMesoError] = useState<string | null>(null);
@@ -74,6 +78,7 @@ export default function TrainingScreen() {
     setSelectedId(id);
     setLoadingMeso(true);
     setMesoError(null);
+    setStartError(null);
     setView('session');
     try {
       const detail = await fetchMesocycleDetail(id);
@@ -87,6 +92,17 @@ export default function TrainingScreen() {
       setMesoError(e.message || 'Could not load this mesocycle.');
     }
     setLoadingMeso(false);
+  }
+
+  async function handleStartMeso() {
+    if (!meso) return;
+    try {
+      await startMesocycle(meso.id, userId);
+      const detail = await fetchMesocycleDetail(meso.id);
+      setMeso(detail);
+    } catch (e: any) {
+      setStartError(e.message || 'Could not start this mesocycle.');
+    }
   }
 
   function handleChangeSets(exerciseId: string, currentSets: number, delta: number) {
@@ -147,7 +163,7 @@ export default function TrainingScreen() {
       setSessions(updated);
     } catch (e: any) {
       console.error('Could not save:', e);
-            Alert.alert('Could not save', e.message || 'Unknown error while saving this set.');
+      Alert.alert('Could not save', e.message || 'Unknown error while saving this set.');
     }
   }
 
@@ -171,7 +187,7 @@ export default function TrainingScreen() {
       setViewingIndex(isLast ? total - 1 : viewingIndex + 1);
     } catch (e: any) {
       console.error('Could not complete session:', e);
-            Alert.alert('Could not complete session', e.message || 'Unknown error.');
+      Alert.alert('Could not complete session', e.message || 'Unknown error.');
     }
   }
 
@@ -184,7 +200,7 @@ export default function TrainingScreen() {
       setSelectedId(null);
     } catch (e: any) {
       console.error('Could not end mesocycle:', e);
-            Alert.alert('Could not end mesocycle', e.message || 'Unknown error.');
+      Alert.alert('Could not end mesocycle', e.message || 'Unknown error.');
     }
   }
 
@@ -206,25 +222,22 @@ export default function TrainingScreen() {
       setView('wizard');
     } catch (e: any) {
       console.error('Could not duplicate mesocycle:', e);
-            Alert.alert('Could not duplicate mesocycle', e.message || 'Unknown error.');
+      Alert.alert('Could not duplicate mesocycle', e.message || 'Unknown error.');
     }
   }
 
   async function handleCreateMeso(input: NewMesoInput) {
-    if (mesos.some((m) => !m.finished)) {
-      Alert.alert('Mesocycle in progress', 'Finish or end your current mesocycle before starting a new one.');
-      setView('menu');
-      return;
-    }
     try {
       const id = await createMesocycle(userId, input);
       setWizardInitial(null);
       await openMeso(id);
     } catch (e: any) {
       console.error('Could not create mesocycle:', e);
-            Alert.alert('Could not create mesocycle', e.message || 'Unknown error.');
+      Alert.alert('Could not create mesocycle', e.message || 'Unknown error.');
     }
   }
+
+  const hasActiveMeso = mesos.some((m) => m.started && !m.finished && m.id !== selectedId);
 
   return (
     <Screen title="Training">
@@ -238,12 +251,19 @@ export default function TrainingScreen() {
           loading={loadingMenu}
           mesos={mesos}
           onSelect={openMeso}
-          onCreate={() => {
+          onCreate={() => setView('createChoice')}
+          onDelete={handleDeleteMeso}
+          onBack={() => setView('typeMenu')}
+        />
+      )}
+
+      {view === 'createChoice' && (
+        <CreateMesoChooser
+          onFromScratch={() => {
             setWizardInitial(null);
             setView('wizard');
           }}
-          onDelete={handleDeleteMeso}
-          onBack={() => setView('typeMenu')}
+          onCancel={() => setView('menu')}
         />
       )}
 
@@ -262,6 +282,13 @@ export default function TrainingScreen() {
         !mesoError &&
         (loadingMeso || !meso ? (
           <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
+        ) : !meso.started && !meso.finished ? (
+          <DraftPreview
+            meso={meso}
+            blockedReason={hasActiveMeso ? 'You already have a mesocycle in progress. Finish or end it before starting this one.' : startError}
+            onStart={handleStartMeso}
+            onBack={() => setView('menu')}
+          />
         ) : (
           <SessionView
             meso={meso}
