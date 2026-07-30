@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView, Modal } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { Card } from '../Card';
 import { useAppTheme } from '../../lib/theme-context';
 import { radius, spacing } from '../../constants/theme';
@@ -111,8 +112,9 @@ export function SessionView({
 
   return (
     <View>
-      <Pressable onPress={onBack} style={{ marginBottom: 10 }}>
-        <Text style={{ color: colors.text2 }}>← Mesocycles</Text>
+      <Pressable onPress={onBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surface2, alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 14, marginBottom: 14 }}>
+        <Feather name="chevron-left" size={16} color={colors.text} />
+        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>Mesocycles</Text>
       </Pressable>
 
       {meso.finished && (

@@ -94,17 +94,25 @@ export default function TrainingScreen() {
       {
         text: 'Just this session',
         onPress: async () => {
-          await setSessionOverride(meso.id, userId, viewingIndex, exerciseId, newCount);
-          const overrides = await fetchSessionOverrides(meso.id, userId);
-          setOverridesMap(overrides);
+          try {
+            await setSessionOverride(meso.id, userId, viewingIndex, exerciseId, newCount);
+            const overrides = await fetchSessionOverrides(meso.id, userId);
+            setOverridesMap(overrides);
+          } catch (e: any) {
+            Alert.alert('Could not update sets', e.message || 'Unknown error.');
+          }
         },
       },
       {
         text: 'Whole mesocycle',
         onPress: async () => {
-          await updateExerciseSetsGlobal(exerciseId, userId, newCount);
-          const detail = await fetchMesocycleDetail(meso.id);
-          setMeso(detail);
+          try {
+            await updateExerciseSetsGlobal(exerciseId, userId, newCount);
+            const detail = await fetchMesocycleDetail(meso.id);
+            setMeso(detail);
+          } catch (e: any) {
+            Alert.alert('Could not update sets', e.message || 'Unknown error.');
+          }
         },
       },
       { text: 'Cancel', style: 'cancel' },
@@ -124,54 +132,74 @@ export default function TrainingScreen() {
     if (!meso) return;
     const kg = kgStr ? parseFloat(kgStr) : null;
     const reps = repsStr ? parseInt(repsStr) : null;
-    let isPR = false;
-    if (kg && reps) {
-      const est = estimate1RM(kg, reps);
-      isPR = await checkAndRecordPR(userId, findExerciseName(exId), kg, reps, est);
+    try {
+      let isPR = false;
+      if (kg && reps) {
+        const est = estimate1RM(kg, reps);
+        isPR = await checkAndRecordPR(userId, findExerciseName(exId), kg, reps, est);
+      }
+      await saveSet(meso.id, userId, viewingIndex, exId, setIdx, { kg, reps, is_pr: isPR });
+      const updated = await fetchSessions(meso.id, userId);
+      setSessions(updated);
+    } catch (e: any) {
+      Alert.alert('Could not save', e.message || 'Unknown error while saving this set.');
     }
-    await saveSet(meso.id, userId, viewingIndex, exId, setIdx, { kg, reps, is_pr: isPR });
-    const updated = await fetchSessions(meso.id, userId);
-    setSessions(updated);
   }
 
   async function handleCompleteSession(feedback: SessionFeedback) {
     if (!meso) return;
-    await dataCompleteSession(meso.id, userId, viewingIndex, {
-      difficulty: feedback.difficulty,
-      joint_pain: feedback.joint_pain,
-      joint: feedback.joint,
-      sore_exercise: feedback.sore_exercise,
-      note: feedback.note || null,
-    });
-    const total = totalSessions(meso);
-    const isLast = viewingIndex + 1 >= total;
-    await advanceMesocycle(meso.id, isLast ? meso.current_index : viewingIndex + 1, isLast);
-    const detail = await fetchMesocycleDetail(meso.id);
-    const sess = await fetchSessions(meso.id, userId);
-    setMeso(detail);
-    setSessions(sess);
-    setViewingIndex(isLast ? total - 1 : viewingIndex + 1);
+    try {
+      await dataCompleteSession(meso.id, userId, viewingIndex, {
+        difficulty: feedback.difficulty,
+        joint_pain: feedback.joint_pain,
+        joint: feedback.joint,
+        sore_exercise: feedback.sore_exercise,
+        note: feedback.note || null,
+      });
+      const total = totalSessions(meso);
+      const isLast = viewingIndex + 1 >= total;
+      await advanceMesocycle(meso.id, isLast ? meso.current_index : viewingIndex + 1, isLast);
+      const detail = await fetchMesocycleDetail(meso.id);
+      const sess = await fetchSessions(meso.id, userId);
+      setMeso(detail);
+      setSessions(sess);
+      setViewingIndex(isLast ? total - 1 : viewingIndex + 1);
+    } catch (e: any) {
+      Alert.alert('Could not complete session', e.message || 'Unknown error.');
+    }
   }
 
   async function handleEndEarly() {
     if (!meso) return;
-    await endMesocycleEarly(meso.id);
-    setView('menu');
-    setMeso(null);
-    setSelectedId(null);
+    try {
+      await endMesocycleEarly(meso.id);
+      setView('menu');
+      setMeso(null);
+      setSelectedId(null);
+    } catch (e: any) {
+      Alert.alert('Could not end mesocycle', e.message || 'Unknown error.');
+    }
   }
 
   async function handleDuplicate() {
     if (!meso) return;
-    const input = await duplicateMesocycle(meso.id, userId);
-    setWizardInitial(input);
-    setView('wizard');
+    try {
+      const input = await duplicateMesocycle(meso.id, userId);
+      setWizardInitial(input);
+      setView('wizard');
+    } catch (e: any) {
+      Alert.alert('Could not duplicate mesocycle', e.message || 'Unknown error.');
+    }
   }
 
   async function handleCreateMeso(input: NewMesoInput) {
-    const id = await createMesocycle(userId, input);
-    setWizardInitial(null);
-    await openMeso(id);
+    try {
+      const id = await createMesocycle(userId, input);
+      setWizardInitial(null);
+      await openMeso(id);
+    } catch (e: any) {
+      Alert.alert('Could not create mesocycle', e.message || 'Unknown error.');
+    }
   }
 
   return (
