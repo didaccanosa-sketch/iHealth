@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/auth-context';
 import { MesoMenu } from '../../components/training/MesoMenu';
 import { MesoWizard } from '../../components/training/MesoWizard';
 import { SessionView, SessionFeedback } from '../../components/training/SessionView';
+import { TrainingTypeMenu } from '../../components/training/TrainingTypeMenu';
 import {
   fetchMesocycles,
   fetchMesocycleDetail,
@@ -16,6 +17,7 @@ import {
   updateExerciseSetsGlobal,
   createMesocycle,
   duplicateMesocycle,
+  deleteMesocycle,
   saveSet,
   checkAndRecordPR,
   completeSession as dataCompleteSession,
@@ -27,14 +29,14 @@ import {
 import { Mesocycle, MesoSession } from '../../lib/engine/types';
 import { totalSessions, estimate1RM } from '../../lib/engine/workout-engine';
 
-type View = 'menu' | 'wizard' | 'session';
+type View = 'typeMenu' | 'menu' | 'wizard' | 'session';
 
 export default function TrainingScreen() {
   const { colors } = useAppTheme();
   const { session } = useAuth();
   const userId = session?.user.id as string;
 
-  const [view, setView] = useState<View>('menu');
+  const [view, setView] = useState<View>('typeMenu');
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [mesos, setMesos] = useState<MesoSummary[]>([]);
 
@@ -186,6 +188,16 @@ export default function TrainingScreen() {
     }
   }
 
+  async function handleDeleteMeso(id: string) {
+    try {
+      await deleteMesocycle(id, userId);
+      await loadMenu();
+    } catch (e: any) {
+      console.error('Could not delete mesocycle:', e);
+      setMenuError(e.message || 'Could not delete this mesocycle.');
+    }
+  }
+
   async function handleDuplicate() {
     if (!meso) return;
     try {
@@ -199,6 +211,11 @@ export default function TrainingScreen() {
   }
 
   async function handleCreateMeso(input: NewMesoInput) {
+    if (mesos.some((m) => !m.finished)) {
+      Alert.alert('Mesocycle in progress', 'Finish or end your current mesocycle before starting a new one.');
+      setView('menu');
+      return;
+    }
     try {
       const id = await createMesocycle(userId, input);
       setWizardInitial(null);
@@ -211,6 +228,8 @@ export default function TrainingScreen() {
 
   return (
     <Screen title="Training">
+      {view === 'typeMenu' && <TrainingTypeMenu onSelectHypertrophy={() => setView('menu')} />}
+
       {view === 'menu' && menuError && (
         <Text style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{menuError}</Text>
       )}
@@ -223,6 +242,8 @@ export default function TrainingScreen() {
             setWizardInitial(null);
             setView('wizard');
           }}
+          onDelete={handleDeleteMeso}
+          onBack={() => setView('typeMenu')}
         />
       )}
 

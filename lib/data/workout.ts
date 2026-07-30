@@ -293,6 +293,11 @@ export async function endMesocycleEarly(mesocycleId: string) {
   if (error) throw error;
 }
 
+export async function deleteMesocycle(mesocycleId: string, userId: string) {
+  const { error } = await supabase.from('mesocycles').delete().eq('id', mesocycleId).eq('user_id', userId);
+  if (error) throw error;
+}
+
 // Cambiar el número de series solo para esta sesión concreta (no afecta a otras semanas)
 export async function setSessionOverride(mesocycleId: string, userId: string, sessionIndex: number, exerciseId: string, sets: number) {
   const sessionId = await ensureSessionRow(mesocycleId, userId, sessionIndex);
