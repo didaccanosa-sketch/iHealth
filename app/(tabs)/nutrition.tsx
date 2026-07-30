@@ -130,7 +130,7 @@ export default function NutritionScreen() {
 
   async function handleDuplicate(meal: Meal) {
     try {
-      await duplicateMeal(meal, userId);
+      await duplicateMeal(meal, userId, nextSlot);
       await load();
     } catch (e: any) {
       console.error('Could not duplicate meal:', e);

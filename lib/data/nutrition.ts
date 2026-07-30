@@ -47,7 +47,7 @@ export async function deleteMeal(id: string) {
   if (error) throw error;
 }
 
-export async function duplicateMeal(meal: Meal, userId: string, date: string = todayKey()) {
+export async function duplicateMeal(meal: Meal, userId: string, targetSlot: number, date: string = todayKey()) {
   return insertMeal(
     userId,
     {
@@ -58,7 +58,7 @@ export async function duplicateMeal(meal: Meal, userId: string, date: string = t
       fat_g: meal.fat_g,
       fiber_g: meal.fiber_g,
       source: 'template',
-      meal_slot: meal.meal_slot,
+      meal_slot: targetSlot,
     },
     date
   );

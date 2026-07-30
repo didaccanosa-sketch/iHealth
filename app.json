@@ -7,10 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "ihealth",
-    "newArchEnabled": true,
-    "plugins": [
-      "expo-router"
-    ],
+    "plugins": ["expo-router"],
     "ios": {
       "supportsTablet": true
     },
@@ -21,17 +18,10 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.didaccanosa.ihealth"
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    },
-    "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "594b326d-8a61-440e-bfb9-f5b00eeed654"
-      }
     }
   }
 }
