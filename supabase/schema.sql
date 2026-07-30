@@ -15,8 +15,11 @@ create table if not exists profiles (
 );
 
 alter table profiles enable row level security;
+drop policy if exists "profiles: select own" on profiles;
 create policy "profiles: select own" on profiles for select using (auth.uid() = id);
+drop policy if exists "profiles: update own" on profiles;
 create policy "profiles: update own" on profiles for update using (auth.uid() = id);
+drop policy if exists "profiles: insert own" on profiles;
 create policy "profiles: insert own" on profiles for insert with check (auth.uid() = id);
 
 -- ─── OBJETIVO (Goal Engine) ──────────────────────────────────────────────────
@@ -32,6 +35,7 @@ create table if not exists goals (
 );
 
 alter table goals enable row level security;
+drop policy if exists "goals: all own" on goals;
 create policy "goals: all own" on goals for all using (auth.uid() = user_id);
 
 -- ─── PESO ────────────────────────────────────────────────────────────────────
@@ -44,6 +48,7 @@ create table if not exists weight_logs (
 );
 
 alter table weight_logs enable row level security;
+drop policy if exists "weight_logs: all own" on weight_logs;
 create policy "weight_logs: all own" on weight_logs for all using (auth.uid() = user_id);
 
 -- ─── COMIDAS (Nutrition Engine) ──────────────────────────────────────────────
@@ -64,6 +69,7 @@ create table if not exists meals (
 );
 
 alter table meals enable row level security;
+drop policy if exists "meals: all own" on meals;
 create policy "meals: all own" on meals for all using (auth.uid() = user_id);
 
 -- ─── AGUA ────────────────────────────────────────────────────────────────────
@@ -76,6 +82,7 @@ create table if not exists water_logs (
 );
 
 alter table water_logs enable row level security;
+drop policy if exists "water_logs: all own" on water_logs;
 create policy "water_logs: all own" on water_logs for all using (auth.uid() = user_id);
 
 -- ─── CHECKLIST DIARIO (Today) ────────────────────────────────────────────────
@@ -88,6 +95,7 @@ create table if not exists daily_checklist_items (
 );
 
 alter table daily_checklist_items enable row level security;
+drop policy if exists "checklist items: all own" on daily_checklist_items;
 create policy "checklist items: all own" on daily_checklist_items for all using (auth.uid() = user_id);
 
 create table if not exists daily_checklist_logs (
@@ -101,6 +109,7 @@ create table if not exists daily_checklist_logs (
 );
 
 alter table daily_checklist_logs enable row level security;
+drop policy if exists "checklist logs: all own" on daily_checklist_logs;
 create policy "checklist logs: all own" on daily_checklist_logs for all using (auth.uid() = user_id);
 
 -- ─── TRIGGER: crear perfil automáticamente al registrarse ───────────────────
@@ -136,6 +145,7 @@ create table if not exists meal_templates (
 );
 
 alter table meal_templates enable row level security;
+drop policy if exists "meal_templates: all own" on meal_templates;
 create policy "meal_templates: all own" on meal_templates for all using (auth.uid() = user_id);
 
 -- ─── OBJETIVO: histórico de recálculos de ETA (Goal Engine) ─────────────────
@@ -150,6 +160,7 @@ create table if not exists goal_predictions (
 );
 
 alter table goal_predictions enable row level security;
+drop policy if exists "goal_predictions: all own" on goal_predictions;
 create policy "goal_predictions: all own" on goal_predictions for all using (auth.uid() = user_id);
 
 -- ─── WORKOUT ENGINE: mesociclos ──────────────────────────────────────────────
@@ -167,6 +178,7 @@ create table if not exists mesocycles (
 );
 
 alter table mesocycles enable row level security;
+drop policy if exists "mesocycles: all own" on mesocycles;
 create policy "mesocycles: all own" on mesocycles for all using (auth.uid() = user_id);
 
 -- Un "día" de la rutina del meso (ej. "Empuje"), se repite cada semana
@@ -180,6 +192,7 @@ create table if not exists meso_days (
 );
 
 alter table meso_days enable row level security;
+drop policy if exists "meso_days: all own" on meso_days;
 create policy "meso_days: all own" on meso_days for all using (auth.uid() = user_id);
 
 -- Ejercicios dentro de cada día del meso
@@ -196,6 +209,7 @@ create table if not exists meso_exercises (
 );
 
 alter table meso_exercises enable row level security;
+drop policy if exists "meso_exercises: all own" on meso_exercises;
 create policy "meso_exercises: all own" on meso_exercises for all using (auth.uid() = user_id);
 
 -- Sesiones del meso (una por cada vez que toca entrenar, incluida la descarga)
@@ -216,6 +230,7 @@ create table if not exists meso_sessions (
 );
 
 alter table meso_sessions enable row level security;
+drop policy if exists "meso_sessions: all own" on meso_sessions;
 create policy "meso_sessions: all own" on meso_sessions for all using (auth.uid() = user_id);
 
 -- Series registradas dentro de una sesión
@@ -233,6 +248,7 @@ create table if not exists meso_session_sets (
 );
 
 alter table meso_session_sets enable row level security;
+drop policy if exists "meso_session_sets: all own" on meso_session_sets;
 create policy "meso_session_sets: all own" on meso_session_sets for all using (auth.uid() = user_id);
 
 -- Marcas personales (PRs), una fila por ejercicio con la mejor marca conocida
@@ -249,6 +265,7 @@ create table if not exists personal_records (
 );
 
 alter table personal_records enable row level security;
+drop policy if exists "personal_records: all own" on personal_records;
 create policy "personal_records: all own" on personal_records for all using (auth.uid() = user_id);
 
 -- ─── INSIGHTS DE IA (caché — nunca se reprocesa el mismo contenido) ─────────
@@ -263,4 +280,5 @@ create table if not exists ai_insights (
 );
 
 alter table ai_insights enable row level security;
+drop policy if exists "ai_insights: all own" on ai_insights;
 create policy "ai_insights: all own" on ai_insights for all using (auth.uid() = user_id);

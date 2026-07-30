@@ -43,10 +43,18 @@ export default function TrainingScreen() {
   const [viewingIndex, setViewingIndex] = useState<number>(0);
   const [loadingMeso, setLoadingMeso] = useState(false);
 
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [mesoError, setMesoError] = useState<string | null>(null);
+
   const loadMenu = useCallback(async () => {
     setLoadingMenu(true);
-    const data = await fetchMesocycles(userId);
-    setMesos(data);
+    setMenuError(null);
+    try {
+      const data = await fetchMesocycles(userId);
+      setMesos(data);
+    } catch (e: any) {
+      setMenuError(e.message || 'Could not load your mesocycles.');
+    }
     setLoadingMenu(false);
   }, [userId]);
 
@@ -59,12 +67,17 @@ export default function TrainingScreen() {
   async function openMeso(id: string) {
     setSelectedId(id);
     setLoadingMeso(true);
+    setMesoError(null);
     setView('session');
-    const detail = await fetchMesocycleDetail(id);
-    const sess = await fetchSessions(id, userId);
-    setMeso(detail);
-    setSessions(sess);
-    setViewingIndex(detail.finished ? totalSessions(detail) - 1 : detail.current_index);
+    try {
+      const detail = await fetchMesocycleDetail(id);
+      const sess = await fetchSessions(id, userId);
+      setMeso(detail);
+      setSessions(sess);
+      setViewingIndex(detail.finished ? totalSessions(detail) - 1 : detail.current_index);
+    } catch (e: any) {
+      setMesoError(e.message || 'Could not load this mesocycle.');
+    }
     setLoadingMeso(false);
   }
 
@@ -133,6 +146,9 @@ export default function TrainingScreen() {
 
   return (
     <Screen title="Training">
+      {view === 'menu' && menuError && (
+        <Text style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{menuError}</Text>
+      )}
       {view === 'menu' && (
         <MesoMenu
           loading={loadingMenu}
@@ -153,7 +169,11 @@ export default function TrainingScreen() {
         />
       )}
 
+      {view === 'session' && mesoError && (
+        <Text style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{mesoError}</Text>
+      )}
       {view === 'session' &&
+        !mesoError &&
         (loadingMeso || !meso ? (
           <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
         ) : (
