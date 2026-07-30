@@ -222,7 +222,7 @@ export function MesoWizard({
                     <Text style={{ color: colors.text, fontSize: 13 }}>{s}</Text>
                   </Pressable>
                 ))}
-                {query.trim() && !suggestions.some((s) => s.toLowerCase() === query.trim().toLowerCase()) && (
+                {!!query.trim() && !suggestions.some((s) => s.toLowerCase() === query.trim().toLowerCase()) && (
                   <Pressable onPress={() => addExercise(query)} style={{ paddingVertical: 9, paddingHorizontal: 12, backgroundColor: colors.surface2, borderRadius: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border }}>
                     <Text style={{ color: colors.accent, fontSize: 13 }}>+ Add "{query}" as is</Text>
                   </Pressable>
