@@ -70,6 +70,7 @@ export function SessionView({
   onEndEarly,
   onBack,
   onDuplicate,
+  onSaveTemplate,
   overrides,
   onChangeSets,
 }: {
@@ -82,11 +83,14 @@ export function SessionView({
   onEndEarly: () => void;
   onBack: () => void;
   onDuplicate: () => void;
+  onSaveTemplate: (name: string) => void;
   overrides?: Record<string, number>;
   onChangeSets: (exerciseId: string, currentSets: number, delta: number) => void;
 }) {
   const { colors } = useAppTheme();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
   const [feedback, setFeedback] = useState<SessionFeedback>({ difficulty: 'normal', joint_pain: false, joint: null, sore_exercise: null, note: '' });
 
   const total = totalSessions(meso);
@@ -126,6 +130,32 @@ export function SessionView({
           <Pressable onPress={onDuplicate} style={{ backgroundColor: colors.accent, borderRadius: radius.md, padding: 12, alignItems: 'center', marginTop: 10 }}>
             <Text style={{ color: colors.accentText, fontWeight: '700' }}>Duplicate this mesocycle</Text>
           </Pressable>
+          {!savingTemplate ? (
+            <Pressable onPress={() => { setTemplateName(''); setSavingTemplate(true); }} style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 12, alignItems: 'center', marginTop: 8 }}>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>Save as template</Text>
+            </Pressable>
+          ) : (
+            <View style={{ marginTop: 10 }}>
+              <TextInput
+                value={templateName}
+                onChangeText={setTemplateName}
+                placeholder="Template name"
+                placeholderTextColor={colors.text2}
+                style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, color: colors.text, marginBottom: 8, borderWidth: 1, borderColor: colors.border }}
+              />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  onPress={() => { if (templateName.trim()) { onSaveTemplate(templateName.trim()); setSavingTemplate(false); } }}
+                  style={{ flex: 1, backgroundColor: colors.accent, borderRadius: radius.md, padding: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: colors.accentText, fontWeight: '700', fontSize: 13 }}>Save</Text>
+                </Pressable>
+                <Pressable onPress={() => setSavingTemplate(false)} style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, alignItems: 'center' }}>
+                  <Text style={{ color: colors.text2, fontWeight: '600', fontSize: 13 }}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
         </Card>
       )}
 

@@ -31,6 +31,11 @@ import {
   fetchMealTemplates,
   deleteMealTemplate,
   MealTemplate,
+  saveDayAsTemplate,
+  fetchDayTemplates,
+  applyDayTemplate,
+  deleteDayTemplate,
+  DayTemplate,
 } from '../../lib/data/nutrition';
 
 export default function NutritionScreen() {
@@ -48,6 +53,9 @@ export default function NutritionScreen() {
   const [error, setError] = useState<string | null>(null);
   const [savedTemplateIds, setSavedTemplateIds] = useState<Set<string>>(new Set());
   const [templates, setTemplates] = useState<MealTemplate[]>([]);
+  const [dayTemplates, setDayTemplates] = useState<DayTemplate[]>([]);
+  const [savingDayTemplate, setSavingDayTemplate] = useState(false);
+  const [dayTemplateName, setDayTemplateName] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +64,8 @@ export default function NutritionScreen() {
       setMeals(data);
       const tmpl = await fetchMealTemplates(userId);
       setTemplates(tmpl);
+      const dayTmpl = await fetchDayTemplates(userId);
+      setDayTemplates(dayTmpl);
     } catch (e: any) {
       setError(e.message);
     }
@@ -193,6 +203,40 @@ export default function NutritionScreen() {
     }
   }
 
+  async function handleSaveDayTemplate() {
+    if (!dayTemplateName.trim()) return;
+    try {
+      await saveDayAsTemplate(userId, dayTemplateName.trim(), meals);
+      setSavingDayTemplate(false);
+      setDayTemplateName('');
+      const dayTmpl = await fetchDayTemplates(userId);
+      setDayTemplates(dayTmpl);
+    } catch (e: any) {
+      console.error('Could not save day template:', e);
+      setError(e.message || 'Could not save this day as a template.');
+    }
+  }
+
+  async function handleApplyDayTemplate(tmpl: DayTemplate) {
+    try {
+      await applyDayTemplate(userId, tmpl);
+      await load();
+    } catch (e: any) {
+      console.error('Could not apply day template:', e);
+      setError(e.message || 'Could not apply this template.');
+    }
+  }
+
+  async function handleDeleteDayTemplate(id: string) {
+    try {
+      await deleteDayTemplate(id);
+      setDayTemplates((prev) => prev.filter((t) => t.id !== id));
+    } catch (e: any) {
+      console.error('Could not delete day template:', e);
+      setError(e.message || 'Could not delete this template.');
+    }
+  }
+
   return (
     <Screen title="Nutrition">
       <Card variant="glass">
@@ -210,12 +254,62 @@ export default function NutritionScreen() {
         <Text style={{ color: colors.danger, fontSize: 12, marginBottom: 12 }}>{error}</Text>
       )}
 
+      {meals.length > 0 && !savingDayTemplate && (
+        <Pressable
+          onPress={() => { setDayTemplateName(''); setSavingDayTemplate(true); }}
+          style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 12, alignItems: 'center', marginBottom: 12 }}
+        >
+          <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>Save this day as a template</Text>
+        </Pressable>
+      )}
+      {savingDayTemplate && (
+        <Card>
+          <TextInput
+            value={dayTemplateName}
+            onChangeText={setDayTemplateName}
+            placeholder="Template name (e.g. Training day)"
+            placeholderTextColor={colors.text2}
+            style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, color: colors.text, marginBottom: 8, borderWidth: 1, borderColor: colors.border }}
+          />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={handleSaveDayTemplate} style={{ flex: 1, backgroundColor: colors.accent, borderRadius: radius.md, padding: 10, alignItems: 'center' }}>
+              <Text style={{ color: colors.accentText, fontWeight: '700', fontSize: 13 }}>Save</Text>
+            </Pressable>
+            <Pressable onPress={() => setSavingDayTemplate(false)} style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, alignItems: 'center' }}>
+              <Text style={{ color: colors.text2, fontWeight: '600', fontSize: 13 }}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Card>
+      )}
+
       {loading ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
       ) : bySlot.length === 0 ? (
-        <Card>
-          <Text style={{ color: colors.text2, fontSize: 13 }}>Nothing logged yet today.</Text>
-        </Card>
+        <>
+          <Card>
+            <Text style={{ color: colors.text2, fontSize: 13 }}>Nothing logged yet today.</Text>
+          </Card>
+          {dayTemplates.length > 0 && (
+            <View style={{ marginBottom: 8 }}>
+              <Text style={{ color: colors.text2, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                Or apply a day template
+              </Text>
+              {dayTemplates.map((t) => (
+                <Card key={t.id}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Pressable onPress={() => handleApplyDayTemplate(t)} style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{t.name}</Text>
+                      <Text style={{ color: colors.text2, fontSize: 12, marginTop: 2 }}>{t.meals.length} meals</Text>
+                    </Pressable>
+                    <Pressable onPress={() => handleDeleteDayTemplate(t.id)} hitSlop={8}>
+                      <Feather name="trash-2" size={16} color={colors.text2} />
+                    </Pressable>
+                  </View>
+                </Card>
+              ))}
+            </View>
+          )}
+        </>
       ) : (
         bySlot.map((group) => (
           <View key={group.slot} style={{ marginBottom: 8 }}>

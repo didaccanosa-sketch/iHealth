@@ -10,6 +10,8 @@ import { SessionView, SessionFeedback } from '../../components/training/SessionV
 import { TrainingTypeMenu } from '../../components/training/TrainingTypeMenu';
 import { CreateMesoChooser } from '../../components/training/CreateMesoChooser';
 import { DraftPreview } from '../../components/training/DraftPreview';
+import { TemplatePicker } from '../../components/training/TemplatePicker';
+import { CardioScreen } from '../../components/training/CardioScreen';
 import {
   fetchMesocycles,
   fetchMesocycleDetail,
@@ -26,13 +28,14 @@ import {
   completeSession as dataCompleteSession,
   advanceMesocycle,
   endMesocycleEarly,
+  saveMesoAsTemplate,
   MesoSummary,
   NewMesoInput,
 } from '../../lib/data/workout';
-import { Mesocycle, MesoSession } from '../../lib/engine/types';
+import { Mesocycle, MesoSession, MuscleGroup } from '../../lib/engine/types';
 import { totalSessions, estimate1RM } from '../../lib/engine/workout-engine';
 
-type View = 'typeMenu' | 'menu' | 'createChoice' | 'wizard' | 'session';
+type View = 'typeMenu' | 'menu' | 'createChoice' | 'templatePicker' | 'wizard' | 'session' | 'cardio';
 
 export default function TrainingScreen() {
   const { colors } = useAppTheme();
@@ -226,6 +229,17 @@ export default function TrainingScreen() {
     }
   }
 
+  async function handleSaveAsTemplate(name: string) {
+    if (!meso) return;
+    try {
+      await saveMesoAsTemplate(meso.id, userId, name);
+      Alert.alert('Saved', 'Template saved — find it under "My templates" next time you create a mesocycle.');
+    } catch (e: any) {
+      console.error('Could not save template:', e);
+      Alert.alert('Could not save template', e.message || 'Unknown error.');
+    }
+  }
+
   async function handleCreateMeso(input: NewMesoInput) {
     try {
       const id = await createMesocycle(userId, input);
@@ -237,11 +251,29 @@ export default function TrainingScreen() {
     }
   }
 
+  function handlePickTemplate(
+    days: { label: string; exercises: { name: string; muscle_group: MuscleGroup; sets: number; reps: string }[] }[],
+    daysPerWeek: number
+  ) {
+    setWizardInitial({
+      level: 'principiante',
+      phase: 'volumen',
+      duration_weeks: 6,
+      days_per_week: daysPerWeek,
+      days,
+    });
+    setView('wizard');
+  }
+
   const hasActiveMeso = mesos.some((m) => m.started && !m.finished && m.id !== selectedId);
 
   return (
     <Screen title="Training">
-      {view === 'typeMenu' && <TrainingTypeMenu onSelectHypertrophy={() => setView('menu')} />}
+      {view === 'typeMenu' && (
+        <TrainingTypeMenu onSelectHypertrophy={() => setView('menu')} onSelectCardio={() => setView('cardio')} />
+      )}
+
+      {view === 'cardio' && <CardioScreen onBack={() => setView('typeMenu')} />}
 
       {view === 'menu' && menuError && (
         <Text style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{menuError}</Text>
@@ -263,8 +295,13 @@ export default function TrainingScreen() {
             setWizardInitial(null);
             setView('wizard');
           }}
+          onUseTemplate={() => setView('templatePicker')}
           onCancel={() => setView('menu')}
         />
+      )}
+
+      {view === 'templatePicker' && (
+        <TemplatePicker onPick={handlePickTemplate} onCancel={() => setView('createChoice')} />
       )}
 
       {view === 'wizard' && (
@@ -300,6 +337,7 @@ export default function TrainingScreen() {
             onEndEarly={handleEndEarly}
             onBack={() => setView('menu')}
             onDuplicate={handleDuplicate}
+            onSaveTemplate={handleSaveAsTemplate}
             overrides={overridesMap[viewingIndex]}
             onChangeSets={handleChangeSets}
           />

@@ -358,3 +358,41 @@ export async function fetchSessionOverrides(mesocycleId: string, userId: string)
   });
   return result;
 }
+
+// ─── Plantillas de mesociclo guardadas por el usuario ───────────────────────
+export type UserMesoTemplate = {
+  id: string;
+  name: string;
+  days_per_week: number;
+  days: { label: string; exercises: { name: string; muscle_group: MuscleGroup; sets: number; reps: string }[] }[];
+};
+
+export async function saveMesoAsTemplate(mesocycleId: string, userId: string, name: string) {
+  const detail = await fetchMesocycleDetail(mesocycleId);
+  const days = detail.days.map((d) => ({
+    label: d.label,
+    exercises: d.exercises.map((e) => ({ name: e.name, muscle_group: e.muscle_group, sets: e.sets, reps: e.reps })),
+  }));
+  const { error } = await supabase.from('mesocycle_templates').insert({
+    user_id: userId,
+    name,
+    days_per_week: detail.days_per_week,
+    days,
+  });
+  if (error) throw error;
+}
+
+export async function fetchUserMesoTemplates(userId: string): Promise<UserMesoTemplate[]> {
+  const { data, error } = await supabase
+    .from('mesocycle_templates')
+    .select('id, name, days_per_week, days')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []) as UserMesoTemplate[];
+}
+
+export async function deleteUserMesoTemplate(id: string) {
+  const { error } = await supabase.from('mesocycle_templates').delete().eq('id', id);
+  if (error) throw error;
+}

@@ -15,9 +15,9 @@ const TYPES: { id: string; label: string; desc: string; icon: keyof typeof Feath
   {
     id: 'cardio',
     label: 'Cardio',
-    desc: 'Distance, pace, heart rate tracking',
+    desc: 'Log sessions by chat, weekly/monthly kcal trend',
     icon: 'activity',
-    available: false,
+    available: true,
   },
   {
     id: 'functional',
@@ -28,7 +28,7 @@ const TYPES: { id: string; label: string; desc: string; icon: keyof typeof Feath
   },
 ];
 
-export function TrainingTypeMenu({ onSelectHypertrophy }: { onSelectHypertrophy: () => void }) {
+export function TrainingTypeMenu({ onSelectHypertrophy, onSelectCardio }: { onSelectHypertrophy: () => void; onSelectCardio: () => void }) {
   const { colors } = useAppTheme();
 
   return (
@@ -40,6 +40,7 @@ export function TrainingTypeMenu({ onSelectHypertrophy }: { onSelectHypertrophy:
           disabled={!t.available}
           onPress={() => {
             if (t.id === 'hypertrophy') onSelectHypertrophy();
+            if (t.id === 'cardio') onSelectCardio();
           }}
           style={{
             backgroundColor: colors.surface,

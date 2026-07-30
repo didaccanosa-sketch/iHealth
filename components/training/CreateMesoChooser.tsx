@@ -6,9 +6,11 @@ import { radius, spacing } from '../../constants/theme';
 
 export function CreateMesoChooser({
   onFromScratch,
+  onUseTemplate,
   onCancel,
 }: {
   onFromScratch: () => void;
+  onUseTemplate: () => void;
   onCancel: () => void;
 }) {
   const { colors } = useAppTheme();
@@ -25,9 +27,10 @@ export function CreateMesoChooser({
     {
       id: 'template',
       label: 'Use a template',
-      desc: 'Start from a saved or built-in routine',
+      desc: 'Built-in splits, your saved templates, or a focused split',
       icon: 'copy',
-      available: false,
+      available: true,
+      onPress: onUseTemplate,
     },
     {
       id: 'ai',

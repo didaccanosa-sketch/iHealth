@@ -301,3 +301,82 @@ alter table meso_session_overrides enable row level security;
 drop policy if exists "meso_session_overrides: all own" on meso_session_overrides;
 create policy "meso_session_overrides: all own" on meso_session_overrides for all using (auth.uid() = user_id);
 grant select, insert, update, delete on meso_session_overrides to authenticated, anon;
+
+-- ─── CARDIO ──────────────────────────────────────────────────────────────────
+create table if not exists cardio_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  description text not null,
+  activity_type text,
+  duration_min numeric,
+  distance_km numeric,
+  kcal numeric default 0,
+  avg_heart_rate numeric,
+  logged_at date not null default current_date,
+  source text default 'chat',
+  created_at timestamptz default now()
+);
+alter table cardio_sessions enable row level security;
+drop policy if exists "cardio_sessions: all own" on cardio_sessions;
+create policy "cardio_sessions: all own" on cardio_sessions for all using (auth.uid() = user_id);
+grant select, insert, update, delete on cardio_sessions to authenticated, anon;
+
+create table if not exists cardio_templates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  description text not null,
+  activity_type text,
+  duration_min numeric,
+  distance_km numeric,
+  kcal numeric default 0,
+  avg_heart_rate numeric,
+  created_at timestamptz default now()
+);
+alter table cardio_templates enable row level security;
+drop policy if exists "cardio_templates: all own" on cardio_templates;
+create policy "cardio_templates: all own" on cardio_templates for all using (auth.uid() = user_id);
+grant select, insert, update, delete on cardio_templates to authenticated, anon;
+
+-- ─── PLANTILLAS DE MESOCICLO (guardadas por el usuario; el catálogo fijo y el
+-- generador por énfasis viven en código, no en la base de datos) ────────────
+create table if not exists mesocycle_templates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  name text not null,
+  days_per_week int not null,
+  days jsonb not null,
+  created_at timestamptz default now()
+);
+alter table mesocycle_templates enable row level security;
+drop policy if exists "mesocycle_templates: all own" on mesocycle_templates;
+create policy "mesocycle_templates: all own" on mesocycle_templates for all using (auth.uid() = user_id);
+grant select, insert, update, delete on mesocycle_templates to authenticated, anon;
+
+-- ─── PLANTILLAS DE DÍA COMPLETO (varias comidas juntas) ─────────────────────
+create table if not exists day_templates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  name text not null,
+  created_at timestamptz default now()
+);
+alter table day_templates enable row level security;
+drop policy if exists "day_templates: all own" on day_templates;
+create policy "day_templates: all own" on day_templates for all using (auth.uid() = user_id);
+grant select, insert, update, delete on day_templates to authenticated, anon;
+
+create table if not exists day_template_meals (
+  id uuid primary key default gen_random_uuid(),
+  day_template_id uuid references day_templates(id) on delete cascade not null,
+  user_id uuid references profiles(id) on delete cascade not null,
+  meal_slot int not null,
+  description text not null,
+  kcal numeric default 0,
+  protein_g numeric default 0,
+  carbs_g numeric default 0,
+  fat_g numeric default 0,
+  fiber_g numeric default 0
+);
+alter table day_template_meals enable row level security;
+drop policy if exists "day_template_meals: all own" on day_template_meals;
+create policy "day_template_meals: all own" on day_template_meals for all using (auth.uid() = user_id);
+grant select, insert, update, delete on day_template_meals to authenticated, anon;
