@@ -113,6 +113,8 @@ export function suggestProgression(
   const allTop = !!range && repsArr.length > 0 && repsHit === repsArr.length;
   const mostlyTop = !!range && repsArr.length > 0 && repsHit >= Math.ceil(repsArr.length / 2);
   const belowMin = !!range && repsArr.some((r) => r < range[0]);
+  const maxRepsAchieved = repsArr.length ? Math.max(...repsArr) : range ? range[0] : 0;
+  const targetReps = range ? Math.min(range[1], maxRepsAchieved + 1) : maxRepsAchieved + 1;
 
   let hitTop = level === 'principiante' ? mostlyTop : allTop;
   if (level === 'avanzado' && hitTop) {
@@ -127,13 +129,13 @@ export function suggestProgression(
 
   const phase = meso.phase;
   if (phase === 'definicion') {
-    if (hitTop) return { text: `Keep ~${avg}kg, add 1 rep if you can (cut phase: no rush to add weight)` };
+    if (hitTop) return { text: `Keep ~${avg}kg, aim for ${targetReps} reps (cut phase: no rush to add weight)` };
     if (belowMin) return { text: `Drop to ~${avg - inc}kg and prioritize technique` };
-    return { text: `Keep ~${avg}kg, aim to complete the rep range` };
+    return { text: `Keep ~${avg}kg, aim for ${targetReps} reps` };
   }
   if (phase === 'mantenimiento') {
     if (hitTop) return { text: `Go up to ~${avg + inc}kg` };
-    return { text: `Keep ~${avg}kg` };
+    return { text: `Keep ~${avg}kg, aim for ${targetReps} reps` };
   }
   // volumen
   if (hitTop) {
@@ -141,8 +143,8 @@ export function suggestProgression(
       text: `Go up to ~${avg + inc}kg${level === 'avanzado' ? ' — hit the top of the range 2 sessions in a row' : ' — hit the top of the range last time'}`,
     };
   }
-  if (belowMin) return { text: `Same weight (~${avg}kg), prioritize hitting the minimum reps` };
-  return { text: `Same weight (~${avg}kg), aim for 1-2 more reps` };
+  if (belowMin) return { text: `Same weight (~${avg}kg), aim for at least ${range ? range[0] : targetReps} reps` };
+  return { text: `Same weight (~${avg}kg), aim for ${targetReps} reps` };
 }
 
 function weeklySetsByGroup(days: MesoDay[]): Record<MuscleGroup, number> {

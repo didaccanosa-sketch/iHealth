@@ -99,6 +99,7 @@ export default function TrainingScreen() {
             const overrides = await fetchSessionOverrides(meso.id, userId);
             setOverridesMap(overrides);
           } catch (e: any) {
+            console.error('Could not update sets:', e);
             Alert.alert('Could not update sets', e.message || 'Unknown error.');
           }
         },
@@ -111,6 +112,7 @@ export default function TrainingScreen() {
             const detail = await fetchMesocycleDetail(meso.id);
             setMeso(detail);
           } catch (e: any) {
+            console.error('Could not update sets:', e);
             Alert.alert('Could not update sets', e.message || 'Unknown error.');
           }
         },
@@ -142,7 +144,8 @@ export default function TrainingScreen() {
       const updated = await fetchSessions(meso.id, userId);
       setSessions(updated);
     } catch (e: any) {
-      Alert.alert('Could not save', e.message || 'Unknown error while saving this set.');
+      console.error('Could not save:', e);
+            Alert.alert('Could not save', e.message || 'Unknown error while saving this set.');
     }
   }
 
@@ -165,7 +168,8 @@ export default function TrainingScreen() {
       setSessions(sess);
       setViewingIndex(isLast ? total - 1 : viewingIndex + 1);
     } catch (e: any) {
-      Alert.alert('Could not complete session', e.message || 'Unknown error.');
+      console.error('Could not complete session:', e);
+            Alert.alert('Could not complete session', e.message || 'Unknown error.');
     }
   }
 
@@ -177,7 +181,8 @@ export default function TrainingScreen() {
       setMeso(null);
       setSelectedId(null);
     } catch (e: any) {
-      Alert.alert('Could not end mesocycle', e.message || 'Unknown error.');
+      console.error('Could not end mesocycle:', e);
+            Alert.alert('Could not end mesocycle', e.message || 'Unknown error.');
     }
   }
 
@@ -188,7 +193,8 @@ export default function TrainingScreen() {
       setWizardInitial(input);
       setView('wizard');
     } catch (e: any) {
-      Alert.alert('Could not duplicate mesocycle', e.message || 'Unknown error.');
+      console.error('Could not duplicate mesocycle:', e);
+            Alert.alert('Could not duplicate mesocycle', e.message || 'Unknown error.');
     }
   }
 
@@ -198,7 +204,8 @@ export default function TrainingScreen() {
       setWizardInitial(null);
       await openMeso(id);
     } catch (e: any) {
-      Alert.alert('Could not create mesocycle', e.message || 'Unknown error.');
+      console.error('Could not create mesocycle:', e);
+            Alert.alert('Could not create mesocycle', e.message || 'Unknown error.');
     }
   }
 

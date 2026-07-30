@@ -39,7 +39,7 @@ function SetRow({
       <TextInput
         value={kg}
         onChangeText={setKg}
-        onEndEditing={() => onSave(kg, reps)}
+        onBlur={() => onSave(kg, reps)}
         editable={editable}
         keyboardType="decimal-pad"
         placeholder="kg"
@@ -49,7 +49,7 @@ function SetRow({
       <TextInput
         value={reps}
         onChangeText={setReps}
-        onEndEditing={() => onSave(kg, reps)}
+        onBlur={() => onSave(kg, reps)}
         editable={editable}
         keyboardType="number-pad"
         placeholder="reps"
