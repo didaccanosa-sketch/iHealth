@@ -43,6 +43,7 @@ export default function NutritionScreen() {
   const [slot, setSlot] = useState(1);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedTemplateIds, setSavedTemplateIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,17 +119,40 @@ export default function NutritionScreen() {
   }
 
   async function handleDelete(id: string) {
-    await deleteMeal(id);
-    await load();
+    try {
+      await deleteMeal(id);
+      await load();
+    } catch (e: any) {
+      console.error('Could not delete meal:', e);
+      setError(e.message || 'Could not delete this meal.');
+    }
   }
 
   async function handleDuplicate(meal: Meal) {
-    await duplicateMeal(meal, userId);
-    await load();
+    try {
+      await duplicateMeal(meal, userId);
+      await load();
+    } catch (e: any) {
+      console.error('Could not duplicate meal:', e);
+      setError(e.message || 'Could not duplicate this meal.');
+    }
   }
 
   async function handleSaveTemplate(meal: Meal) {
-    await saveMealAsTemplate(userId, meal);
+    try {
+      await saveMealAsTemplate(userId, meal);
+      setSavedTemplateIds((prev) => new Set(prev).add(meal.id));
+      setTimeout(() => {
+        setSavedTemplateIds((prev) => {
+          const next = new Set(prev);
+          next.delete(meal.id);
+          return next;
+        });
+      }, 2000);
+    } catch (e: any) {
+      console.error('Could not save template:', e);
+      setError(e.message || 'Could not save as template.');
+    }
   }
 
   return (
@@ -143,6 +167,10 @@ export default function NutritionScreen() {
           {nutritionCoachLine(status)}
         </Text>
       </Card>
+
+      {error && !modalOpen && (
+        <Text style={{ color: colors.danger, fontSize: 12, marginBottom: 12 }}>{error}</Text>
+      )}
 
       {loading ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
@@ -170,7 +198,11 @@ export default function NutritionScreen() {
                     <Feather name="copy" size={16} color={colors.text2} />
                   </Pressable>
                   <Pressable onPress={() => handleSaveTemplate(meal)} hitSlop={8}>
-                    <Feather name="bookmark" size={16} color={colors.text2} />
+                    <Feather
+                      name={savedTemplateIds.has(meal.id) ? 'check' : 'bookmark'}
+                      size={16}
+                      color={savedTemplateIds.has(meal.id) ? colors.success : colors.text2}
+                    />
                   </Pressable>
                   <Pressable onPress={() => handleDelete(meal.id)} hitSlop={8}>
                     <Feather name="trash-2" size={16} color={colors.danger} />

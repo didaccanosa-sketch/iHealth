@@ -298,3 +298,4 @@ create table if not exists meso_session_overrides (
 alter table meso_session_overrides enable row level security;
 drop policy if exists "meso_session_overrides: all own" on meso_session_overrides;
 create policy "meso_session_overrides: all own" on meso_session_overrides for all using (auth.uid() = user_id);
+grant select, insert, update, delete on meso_session_overrides to authenticated, anon;

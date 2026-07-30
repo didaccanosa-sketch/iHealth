@@ -46,7 +46,7 @@ serve(async (req: Request) => {
         model: 'claude-sonnet-4-6',
         max_tokens: 500,
         system:
-          'You are a nutritionist. The user describes a meal in free text (Spanish or English). Reply ONLY with JSON, no markdown, in this exact shape: {"desc":"short description","kcal":number,"p":protein_grams,"c":carb_grams,"f":fat_grams,"fiber":fiber_grams}. If you cannot estimate a value, use 0.',
+          'You are a nutritionist. The user describes a meal in free text (Spanish or English), possibly with typos or inconsistent capitalization. Reply ONLY with JSON, no markdown, in this exact shape: {"desc":"short description","kcal":number,"p":protein_grams,"c":carb_grams,"f":fat_grams,"fiber":fiber_grams}. The "desc" field must be a clean, well-written version of what the user described: fix any spelling mistakes, use correct capitalization (capitalize the first letter, proper nouns, keep the rest lowercase unless it is a proper noun), and keep it concise. Do not add foods the user did not mention. If you cannot estimate a nutrition value, use 0.',
         messages: [{ role: 'user', content: text }],
       }),
     });
