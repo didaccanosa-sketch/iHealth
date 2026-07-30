@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { Card } from '../Card';
 import { useAppTheme } from '../../lib/theme-context';
 import { radius, spacing } from '../../constants/theme';
@@ -39,6 +40,7 @@ function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () 
         borderRadius: 14,
         backgroundColor: on ? colors.accent : colors.surface2,
         marginRight: 8,
+        marginBottom: 8,
       }}
     >
       <Text style={{ color: on ? colors.accentText : colors.text2, fontWeight: '600', fontSize: 13 }}>{label}</Text>
@@ -173,12 +175,11 @@ export function MesoWizard({
           </View>
 
           <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Training days per week</Text>
-          <TextInput
-            value={String(form.days_per_week)}
-            onChangeText={(v) => setForm((f) => ({ ...f, days_per_week: parseInt(v) || 1 }))}
-            keyboardType="numeric"
-            style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, color: colors.text, marginBottom: 6, borderWidth: 1, borderColor: colors.border }}
-          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 }}>
+            {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+              <Chip key={n} label={String(n)} on={form.days_per_week === n} onPress={() => setForm((f) => ({ ...f, days_per_week: n }))} />
+            ))}
+          </View>
           <Text style={{ color: colors.text2, fontSize: 11, marginBottom: 14 }}>
             A deload week (fewer sets, high RIR) is added automatically at the end.
           </Text>
@@ -216,15 +217,57 @@ export function MesoWizard({
                 placeholderTextColor={colors.text2}
                 style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, color: colors.text, marginBottom: 8, borderWidth: 1, borderColor: colors.border }}
               />
+              {suggestions.length > 0 && (
+                <Text style={{ color: colors.text2, fontSize: 11, marginBottom: 6 }}>Tap an exercise to add it</Text>
+              )}
               <View style={{ marginBottom: 12 }}>
                 {suggestions.map((s) => (
-                  <Pressable key={s} onPress={() => addExercise(s)} style={{ paddingVertical: 9, paddingHorizontal: 12, backgroundColor: colors.surface2, borderRadius: 12, marginBottom: 5 }}>
-                    <Text style={{ color: colors.text, fontSize: 13 }}>{s}</Text>
+                  <Pressable
+                    key={s}
+                    onPress={() => addExercise(s)}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      backgroundColor: pressed ? colors.accent : colors.surface2,
+                      borderRadius: 12,
+                      marginBottom: 6,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    })}
+                  >
+                    {({ pressed }) => (
+                      <>
+                        <Text style={{ color: pressed ? colors.accentText : colors.text, fontSize: 13 }}>{s}</Text>
+                        <Feather name="plus-circle" size={18} color={pressed ? colors.accentText : colors.accent} />
+                      </>
+                    )}
                   </Pressable>
                 ))}
                 {!!query.trim() && !suggestions.some((s) => s.toLowerCase() === query.trim().toLowerCase()) && (
-                  <Pressable onPress={() => addExercise(query)} style={{ paddingVertical: 9, paddingHorizontal: 12, backgroundColor: colors.surface2, borderRadius: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border }}>
-                    <Text style={{ color: colors.accent, fontSize: 13 }}>+ Add "{query}" as is</Text>
+                  <Pressable
+                    onPress={() => addExercise(query)}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      backgroundColor: pressed ? colors.accent : colors.surface2,
+                      borderRadius: 12,
+                      borderStyle: 'dashed',
+                      borderWidth: 1,
+                      borderColor: colors.accent,
+                    })}
+                  >
+                    {({ pressed }) => (
+                      <>
+                        <Text style={{ color: pressed ? colors.accentText : colors.accent, fontSize: 13 }}>Add "{query}" as is</Text>
+                        <Feather name="plus-circle" size={18} color={pressed ? colors.accentText : colors.accent} />
+                      </>
+                    )}
                   </Pressable>
                 )}
               </View>

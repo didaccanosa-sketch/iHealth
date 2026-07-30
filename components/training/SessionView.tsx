@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
+import { View, Text, Pressable, TextInput, ScrollView, Modal } from 'react-native';
 import { Card } from '../Card';
 import { useAppTheme } from '../../lib/theme-context';
-import { radius } from '../../constants/theme';
+import { radius, spacing } from '../../constants/theme';
 import { Mesocycle, MesoSession } from '../../lib/engine/types';
 import { getSessionDef, computeWeekRIR, suggestProgression, totalSessions } from '../../lib/engine/workout-engine';
 
@@ -18,6 +18,47 @@ export type SessionFeedback = {
   note: string;
 };
 
+function SetRow({
+  initialKg,
+  initialReps,
+  editable,
+  onSave,
+}: {
+  initialKg: string;
+  initialReps: string;
+  editable: boolean;
+  onSave: (kg: string, reps: string) => void;
+}) {
+  const { colors } = useAppTheme();
+  const [kg, setKg] = useState(initialKg);
+  const [reps, setReps] = useState(initialReps);
+
+  return (
+    <>
+      <TextInput
+        value={kg}
+        onChangeText={setKg}
+        onEndEditing={() => onSave(kg, reps)}
+        editable={editable}
+        keyboardType="decimal-pad"
+        placeholder="kg"
+        placeholderTextColor={colors.text2}
+        style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: 10, padding: 9, color: colors.text, textAlign: 'center' }}
+      />
+      <TextInput
+        value={reps}
+        onChangeText={setReps}
+        onEndEditing={() => onSave(kg, reps)}
+        editable={editable}
+        keyboardType="number-pad"
+        placeholder="reps"
+        placeholderTextColor={colors.text2}
+        style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: 10, padding: 9, color: colors.text, textAlign: 'center' }}
+      />
+    </>
+  );
+}
+
 export function SessionView({
   meso,
   sessions,
@@ -28,6 +69,8 @@ export function SessionView({
   onEndEarly,
   onBack,
   onDuplicate,
+  overrides,
+  onChangeSets,
 }: {
   meso: Mesocycle;
   sessions: Record<number, MesoSession>;
@@ -38,13 +81,15 @@ export function SessionView({
   onEndEarly: () => void;
   onBack: () => void;
   onDuplicate: () => void;
+  overrides?: Record<string, number>;
+  onChangeSets: (exerciseId: string, currentSets: number, delta: number) => void;
 }) {
   const { colors } = useAppTheme();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedback, setFeedback] = useState<SessionFeedback>({ difficulty: 'normal', joint_pain: false, joint: null, sore_exercise: null, note: '' });
 
   const total = totalSessions(meso);
-  const sessDef = getSessionDef(meso, viewingIndex);
+  const sessDef = getSessionDef(meso, viewingIndex, overrides);
   const isCurrent = !meso.finished && viewingIndex === meso.current_index;
   const isFuture = !meso.finished && viewingIndex > meso.current_index;
   const sessionData = sessions[viewingIndex];
@@ -141,14 +186,28 @@ export function SessionView({
         const isPR = sessionData?.sets.some((s) => s.exercise_id === ex.id && s.is_pr);
         return (
           <Card key={ex.id}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, flex: 1 }}>
                 {ex.name}
                 {isPR ? ' 🏆' : ''}
               </Text>
-              <Text style={{ color: colors.text2, fontSize: 12 }}>
-                {ex.sets}×{ex.reps}
-              </Text>
+              {isCurrent ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Pressable onPress={() => onChangeSets(ex.id, ex.sets, -1)} style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>−</Text>
+                  </Pressable>
+                  <Text style={{ color: colors.text2, fontSize: 12 }}>
+                    {ex.sets}×{ex.reps}
+                  </Text>
+                  <Pressable onPress={() => onChangeSets(ex.id, ex.sets, 1)} style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>+</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Text style={{ color: colors.text2, fontSize: 12 }}>
+                  {ex.sets}×{ex.reps}
+                </Text>
+              )}
             </View>
             {suggestion && <Text style={{ color: colors.accent, fontSize: 12, marginTop: 4 }}>{suggestion.text}</Text>}
             {isFuture ? (
@@ -156,25 +215,13 @@ export function SessionView({
             ) : (
               <View style={{ marginTop: 10 }}>
                 {Array.from({ length: ex.sets }, (_, i) => i).map((i) => (
-                  <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                  <View key={`${viewingIndex}-${i}`} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 6 }}>
                     <Text style={{ color: colors.text2, fontSize: 12, width: 16, textAlign: 'center' }}>{i + 1}</Text>
-                    <TextInput
-                      defaultValue={getSetValue(ex.id, i, 'kg')}
-                      onEndEditing={(e) => onSaveSet(ex.id, i, e.nativeEvent.text, getSetValue(ex.id, i, 'reps'))}
+                    <SetRow
+                      initialKg={getSetValue(ex.id, i, 'kg')}
+                      initialReps={getSetValue(ex.id, i, 'reps')}
                       editable={isCurrent}
-                      keyboardType="decimal-pad"
-                      placeholder="kg"
-                      placeholderTextColor={colors.text2}
-                      style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: 10, padding: 9, color: colors.text, textAlign: 'center' }}
-                    />
-                    <TextInput
-                      defaultValue={getSetValue(ex.id, i, 'reps')}
-                      onEndEditing={(e) => onSaveSet(ex.id, i, getSetValue(ex.id, i, 'kg'), e.nativeEvent.text)}
-                      editable={isCurrent}
-                      keyboardType="number-pad"
-                      placeholder="reps"
-                      placeholderTextColor={colors.text2}
-                      style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: 10, padding: 9, color: colors.text, textAlign: 'center' }}
+                      onSave={(kg, reps) => onSaveSet(ex.id, i, kg, reps)}
                     />
                   </View>
                 ))}
@@ -184,7 +231,7 @@ export function SessionView({
         );
       })}
 
-      {isCurrent && !feedbackOpen && (
+      {isCurrent && (
         <Pressable onPress={openFeedback} style={{ backgroundColor: colors.accent, borderRadius: radius.md, padding: 14, alignItems: 'center', marginTop: 4 }}>
           <Text style={{ color: colors.accentText, fontWeight: '700' }}>
             Complete session{viewingIndex + 1 === total ? ' (last)' : ''}
@@ -192,12 +239,12 @@ export function SessionView({
         </Pressable>
       )}
 
-      {isCurrent && feedbackOpen && (
-        <Card>
-          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginBottom: 10 }}>How did the session go?</Text>
+      <Modal visible={feedbackOpen} animationType="slide" onRequestClose={() => setFeedbackOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg, paddingTop: 60 }}>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 20, marginBottom: 16 }}>How did the session go?</Text>
 
           <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Overall difficulty</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 }}>
             {[
               ['facil', 'Very easy'],
               ['normal', 'Normal'],
@@ -224,7 +271,7 @@ export function SessionView({
             </Pressable>
           </View>
           {feedback.joint_pain && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
               {JOINTS.map((j) => (
                 <Pressable key={j} onPress={() => setFeedback((f) => ({ ...f, joint: j }))} style={{ paddingVertical: 7, paddingHorizontal: 12, borderRadius: 10, backgroundColor: feedback.joint === j ? colors.accent : colors.surface2, marginRight: 6 }}>
                   <Text style={{ color: feedback.joint === j ? colors.accentText : colors.text2, fontSize: 12 }}>{j}</Text>
@@ -238,7 +285,7 @@ export function SessionView({
             onChangeText={(v) => setFeedback((f) => ({ ...f, note: v }))}
             placeholder="Optional note"
             placeholderTextColor={colors.text2}
-            style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, color: colors.text, marginBottom: 12, borderWidth: 1, borderColor: colors.border }}
+            style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, color: colors.text, marginBottom: 20, borderWidth: 1, borderColor: colors.border }}
           />
 
           <Pressable onPress={() => { onCompleteSession(feedback); setFeedbackOpen(false); }} style={{ backgroundColor: colors.accent, borderRadius: radius.md, padding: 14, alignItems: 'center', marginBottom: 8 }}>
@@ -247,8 +294,8 @@ export function SessionView({
           <Pressable onPress={() => setFeedbackOpen(false)} style={{ padding: 10, alignItems: 'center' }}>
             <Text style={{ color: colors.text2 }}>Cancel</Text>
           </Pressable>
-        </Card>
-      )}
+        </View>
+      </Modal>
 
       {!isCurrent && !meso.finished && viewingIndex < meso.current_index && (
         <Text style={{ color: colors.text2, fontSize: 12, textAlign: 'center', marginTop: 8 }}>Viewing a completed session</Text>

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Text, ActivityIndicator } from 'react-native';
+import { Text, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '../../components/Screen';
 import { useAppTheme } from '../../lib/theme-context';
@@ -11,6 +11,9 @@ import {
   fetchMesocycles,
   fetchMesocycleDetail,
   fetchSessions,
+  fetchSessionOverrides,
+  setSessionOverride,
+  updateExerciseSetsGlobal,
   createMesocycle,
   duplicateMesocycle,
   saveSet,
@@ -45,6 +48,7 @@ export default function TrainingScreen() {
 
   const [menuError, setMenuError] = useState<string | null>(null);
   const [mesoError, setMesoError] = useState<string | null>(null);
+  const [overridesMap, setOverridesMap] = useState<Record<number, Record<string, number>>>({});
 
   const loadMenu = useCallback(async () => {
     setLoadingMenu(true);
@@ -72,13 +76,39 @@ export default function TrainingScreen() {
     try {
       const detail = await fetchMesocycleDetail(id);
       const sess = await fetchSessions(id, userId);
+      const overrides = await fetchSessionOverrides(id, userId);
       setMeso(detail);
       setSessions(sess);
+      setOverridesMap(overrides);
       setViewingIndex(detail.finished ? totalSessions(detail) - 1 : detail.current_index);
     } catch (e: any) {
       setMesoError(e.message || 'Could not load this mesocycle.');
     }
     setLoadingMeso(false);
+  }
+
+  function handleChangeSets(exerciseId: string, currentSets: number, delta: number) {
+    if (!meso) return;
+    const newCount = Math.max(1, currentSets + delta);
+    Alert.alert('Update sets', 'Apply this change to:', [
+      {
+        text: 'Just this session',
+        onPress: async () => {
+          await setSessionOverride(meso.id, userId, viewingIndex, exerciseId, newCount);
+          const overrides = await fetchSessionOverrides(meso.id, userId);
+          setOverridesMap(overrides);
+        },
+      },
+      {
+        text: 'Whole mesocycle',
+        onPress: async () => {
+          await updateExerciseSetsGlobal(exerciseId, userId, newCount);
+          const detail = await fetchMesocycleDetail(meso.id);
+          setMeso(detail);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   function findExerciseName(exId: string): string {
@@ -187,6 +217,8 @@ export default function TrainingScreen() {
             onEndEarly={handleEndEarly}
             onBack={() => setView('menu')}
             onDuplicate={handleDuplicate}
+            overrides={overridesMap[viewingIndex]}
+            onChangeSets={handleChangeSets}
           />
         ))}
     </Screen>

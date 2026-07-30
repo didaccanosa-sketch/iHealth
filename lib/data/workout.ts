@@ -183,7 +183,7 @@ export async function duplicateMesocycle(baseId: string, userId: string): Promis
   };
 }
 
-async function ensureSessionRow(mesocycleId: string, userId: string, sessionIndex: number): Promise<string> {
+export async function ensureSessionRow(mesocycleId: string, userId: string, sessionIndex: number): Promise<string> {
   const { data: existing, error: errFind } = await supabase
     .from('meso_sessions')
     .select('id')
@@ -291,4 +291,49 @@ export async function advanceMesocycle(mesocycleId: string, newCurrentIndex: num
 export async function endMesocycleEarly(mesocycleId: string) {
   const { error } = await supabase.from('mesocycles').update({ finished: true }).eq('id', mesocycleId);
   if (error) throw error;
+}
+
+// Cambiar el número de series solo para esta sesión concreta (no afecta a otras semanas)
+export async function setSessionOverride(mesocycleId: string, userId: string, sessionIndex: number, exerciseId: string, sets: number) {
+  const sessionId = await ensureSessionRow(mesocycleId, userId, sessionIndex);
+  const { error } = await supabase
+    .from('meso_session_overrides')
+    .upsert({ session_id: sessionId, exercise_id: exerciseId, user_id: userId, sets }, { onConflict: 'session_id,exercise_id' });
+  if (error) throw error;
+}
+
+// Cambiar el número de series en la plantilla del ejercicio (afecta a todas las semanas del meso)
+export async function updateExerciseSetsGlobal(exerciseId: string, userId: string, sets: number) {
+  const { error } = await supabase.from('meso_exercises').update({ sets }).eq('id', exerciseId).eq('user_id', userId);
+  if (error) throw error;
+}
+
+// Todos los overrides de un mesociclo, indexados por número de sesión y luego por ejercicio
+export async function fetchSessionOverrides(mesocycleId: string, userId: string): Promise<Record<number, Record<string, number>>> {
+  const { data: sessionRows, error: err1 } = await supabase
+    .from('meso_sessions')
+    .select('id, session_index')
+    .eq('mesocycle_id', mesocycleId)
+    .eq('user_id', userId);
+  if (err1) throw err1;
+  if (!sessionRows || !sessionRows.length) return {};
+
+  const idToIndex = new Map(sessionRows.map((s: any) => [s.id, s.session_index]));
+  const { data: overrides, error: err2 } = await supabase
+    .from('meso_session_overrides')
+    .select('session_id, exercise_id, sets')
+    .in(
+      'session_id',
+      sessionRows.map((s: any) => s.id)
+    );
+  if (err2) throw err2;
+
+  const result: Record<number, Record<string, number>> = {};
+  (overrides || []).forEach((o: any) => {
+    const idx = idToIndex.get(o.session_id);
+    if (idx == null) return;
+    if (!result[idx]) result[idx] = {};
+    result[idx][o.exercise_id] = o.sets;
+  });
+  return result;
 }

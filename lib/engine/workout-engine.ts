@@ -36,18 +36,17 @@ export function totalSessions(meso: Pick<Mesocycle, 'duration_weeks' | 'days_per
   return (meso.duration_weeks + 1) * meso.days_per_week;
 }
 
-export function getSessionDef(meso: Mesocycle, index: number): SessionDef {
+export function getSessionDef(meso: Mesocycle, index: number, overrides?: Record<string, number>): SessionDef {
   const perWeek = meso.days_per_week;
   const week = Math.floor(index / perWeek) + 1;
   const isDeload = week === meso.duration_weeks + 1;
   const dayIndex = index % perWeek;
   const day = meso.days[dayIndex];
-  const exercises = day.exercises.map((e) => ({
-    id: e.id,
-    name: e.name,
-    sets: isDeload ? Math.max(1, Math.round(e.sets * 0.6)) : e.sets,
-    reps: e.reps,
-  }));
+  const exercises = day.exercises.map((e) => {
+    let sets = isDeload ? Math.max(1, Math.round(e.sets * 0.6)) : e.sets;
+    if (overrides && overrides[e.id] != null) sets = overrides[e.id];
+    return { id: e.id, name: e.name, sets, reps: e.reps };
+  });
   return { week, isDeload, dayIndex, dayLabel: day.label, exercises };
 }
 

@@ -282,3 +282,19 @@ create table if not exists ai_insights (
 alter table ai_insights enable row level security;
 drop policy if exists "ai_insights: all own" on ai_insights;
 create policy "ai_insights: all own" on ai_insights for all using (auth.uid() = user_id);
+
+-- Cuando el usuario cambia el número de series "solo para esta sesión" (sin
+-- tocar la plantilla del ejercicio, que afectaría a todas las semanas)
+create table if not exists meso_session_overrides (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid references meso_sessions(id) on delete cascade not null,
+  exercise_id uuid references meso_exercises(id) on delete cascade not null,
+  user_id uuid references profiles(id) on delete cascade not null,
+  sets int not null,
+  created_at timestamptz default now(),
+  unique (session_id, exercise_id)
+);
+
+alter table meso_session_overrides enable row level security;
+drop policy if exists "meso_session_overrides: all own" on meso_session_overrides;
+create policy "meso_session_overrides: all own" on meso_session_overrides for all using (auth.uid() = user_id);
