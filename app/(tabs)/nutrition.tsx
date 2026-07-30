@@ -28,6 +28,9 @@ import {
   duplicateMeal,
   saveMealAsTemplate,
   analyzeMealText,
+  fetchMealTemplates,
+  deleteMealTemplate,
+  MealTemplate,
 } from '../../lib/data/nutrition';
 
 export default function NutritionScreen() {
@@ -44,17 +47,20 @@ export default function NutritionScreen() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedTemplateIds, setSavedTemplateIds] = useState<Set<string>>(new Set());
+  const [templates, setTemplates] = useState<MealTemplate[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchMealsForDate();
       setMeals(data);
+      const tmpl = await fetchMealTemplates(userId);
+      setTemplates(tmpl);
     } catch (e: any) {
       setError(e.message);
     }
     setLoading(false);
-  }, []);
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -149,9 +155,41 @@ export default function NutritionScreen() {
           return next;
         });
       }, 2000);
+      const tmpl = await fetchMealTemplates(userId);
+      setTemplates(tmpl);
     } catch (e: any) {
       console.error('Could not save template:', e);
       setError(e.message || 'Could not save as template.');
+    }
+  }
+
+  async function handleUseTemplate(tmpl: MealTemplate) {
+    try {
+      await insertMeal(userId, {
+        description: tmpl.description,
+        kcal: tmpl.kcal,
+        protein_g: tmpl.protein_g,
+        carbs_g: tmpl.carbs_g,
+        fat_g: tmpl.fat_g,
+        fiber_g: tmpl.fiber_g,
+        source: 'template',
+        meal_slot: slot,
+      });
+      setModalOpen(false);
+      await load();
+    } catch (e: any) {
+      console.error('Could not use template:', e);
+      setError(e.message || 'Could not add this meal.');
+    }
+  }
+
+  async function handleDeleteTemplate(id: string) {
+    try {
+      await deleteMealTemplate(id);
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+    } catch (e: any) {
+      console.error('Could not delete template:', e);
+      setError(e.message || 'Could not delete this template.');
     }
   }
 
@@ -267,6 +305,39 @@ export default function NutritionScreen() {
                   );
                 })}
               </ScrollView>
+
+              {!editingMeal && templates.length > 0 && (
+                <>
+                  <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Or pick a saved meal</Text>
+                  <ScrollView style={{ maxHeight: 160, marginBottom: 14 }}>
+                    {templates.map((tmpl) => (
+                      <View
+                        key={tmpl.id}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: colors.surface2,
+                          borderRadius: radius.md,
+                          padding: 10,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <Pressable onPress={() => handleUseTemplate(tmpl)} style={{ flex: 1 }}>
+                          <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{tmpl.description}</Text>
+                          <Text style={{ color: colors.text2, fontSize: 11, marginTop: 2 }}>
+                            {Math.round(tmpl.kcal)} kcal · P {Math.round(tmpl.protein_g)}g · C {Math.round(tmpl.carbs_g)}g · F{' '}
+                            {Math.round(tmpl.fat_g)}g
+                          </Text>
+                        </Pressable>
+                        <Pressable onPress={() => handleDeleteTemplate(tmpl.id)} hitSlop={8} style={{ paddingLeft: 10 }}>
+                          <Feather name="trash-2" size={15} color={colors.text2} />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </ScrollView>
+                  <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Or describe it</Text>
+                </>
+              )}
 
               <TextInput
                 value={inputText}

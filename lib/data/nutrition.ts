@@ -77,7 +77,17 @@ export async function saveMealAsTemplate(userId: string, meal: Meal) {
   if (error) throw error;
 }
 
-export async function fetchMealTemplates(userId: string) {
+export type MealTemplate = {
+  id: string;
+  description: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+};
+
+export async function fetchMealTemplates(userId: string): Promise<MealTemplate[]> {
   const { data, error } = await supabase
     .from('meal_templates')
     .select('*')
@@ -85,6 +95,11 @@ export async function fetchMealTemplates(userId: string) {
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
+}
+
+export async function deleteMealTemplate(id: string) {
+  const { error } = await supabase.from('meal_templates').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // Llama a la Edge Function de Supabase que analiza el texto de la comida con
