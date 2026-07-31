@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Text, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Screen } from '../../components/Screen';
+import { FadeIn } from '../../components/FadeIn';
 import { useAppTheme } from '../../lib/theme-context';
 import { useAuth } from '../../lib/auth-context';
 import { MesoMenu } from '../../components/training/MesoMenu';
@@ -32,7 +33,7 @@ import {
   MesoSummary,
   NewMesoInput,
 } from '../../lib/data/workout';
-import { Mesocycle, MesoSession, MuscleGroup } from '../../lib/engine/types';
+import { Mesocycle, MesoSession } from '../../lib/engine/types';
 import { totalSessions, estimate1RM } from '../../lib/engine/workout-engine';
 
 type View = 'typeMenu' | 'menu' | 'createChoice' | 'templatePicker' | 'wizard' | 'session' | 'cardio';
@@ -251,17 +252,8 @@ export default function TrainingScreen() {
     }
   }
 
-  function handlePickTemplate(
-    days: { label: string; exercises: { name: string; muscle_group: MuscleGroup; sets: number; reps: string }[] }[],
-    daysPerWeek: number
-  ) {
-    setWizardInitial({
-      level: 'principiante',
-      phase: 'volumen',
-      duration_weeks: 6,
-      days_per_week: daysPerWeek,
-      days,
-    });
+  function handlePickTemplate(input: NewMesoInput) {
+    setWizardInitial(input);
     setView('wizard');
   }
 
@@ -269,6 +261,7 @@ export default function TrainingScreen() {
 
   return (
     <Screen title="Training">
+      <FadeIn trigger={view}>
       {view === 'typeMenu' && (
         <TrainingTypeMenu onSelectHypertrophy={() => setView('menu')} onSelectCardio={() => setView('cardio')} />
       )}
@@ -342,6 +335,7 @@ export default function TrainingScreen() {
             onChangeSets={handleChangeSets}
           />
         ))}
+      </FadeIn>
     </Screen>
   );
 }

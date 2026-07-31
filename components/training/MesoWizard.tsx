@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { Card } from '../Card';
+import { FadeIn } from '../FadeIn';
 import { useAppTheme } from '../../lib/theme-context';
 import { radius, spacing } from '../../constants/theme';
 import { MuscleGroup, Level, Phase } from '../../lib/engine/types';
@@ -57,7 +58,7 @@ export function MesoWizard({
   onCreate: (input: NewMesoInput) => void;
 }) {
   const { colors } = useAppTheme();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(initial ? 3 : 1);
   const [form, setForm] = useState<WizardForm>(() =>
     initial
       ? {
@@ -122,6 +123,18 @@ export function MesoWizard({
     });
   }
 
+  function moveExerciseInDay(targetDayIdx: number, exIdx: number, direction: -1 | 1) {
+    setForm((f) => {
+      const days = [...f.days];
+      const exercises = [...days[targetDayIdx].exercises];
+      const newIdx = exIdx + direction;
+      if (newIdx < 0 || newIdx >= exercises.length) return f;
+      [exercises[exIdx], exercises[newIdx]] = [exercises[newIdx], exercises[exIdx]];
+      days[targetDayIdx] = { ...days[targetDayIdx], exercises };
+      return { ...f, days };
+    });
+  }
+
   const suggestions = useMemo(() => {
     if (!exGroup) return [];
     const list = EXERCISE_DB[exGroup] || [];
@@ -140,6 +153,7 @@ export function MesoWizard({
       </Pressable>
 
       {step === 1 && (
+        <FadeIn trigger={step}>
         <Card>
           <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 12 }}>New mesocycle — basic info</Text>
 
@@ -178,9 +192,11 @@ export function MesoWizard({
             <Text style={{ color: colors.accentText, fontWeight: '700' }}>Continue → choose exercises</Text>
           </Pressable>
         </Card>
+        </FadeIn>
       )}
 
       {step === 2 && day && (
+        <FadeIn trigger={step}>
         <Card>
           <Text style={{ color: colors.text2, fontSize: 12 }}>
             Day {dayIdx + 1} of {form.days_per_week}
@@ -322,21 +338,32 @@ export function MesoWizard({
             )}
           </View>
         </Card>
+        </FadeIn>
       )}
 
       {step === 3 && (
-        <>
+        <FadeIn trigger={step}>
           <Card>
             <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: 10 }}>What I think of this routine</Text>
             <Text style={{ color: colors.text2, fontSize: 13, lineHeight: 20 }}>{warnings}</Text>
           </Card>
-          {form.days.map((d, i) => (
-            <Card key={i}>
-              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginBottom: 6 }}>{d.label}</Text>
+          {form.days.map((d, dIdx) => (
+            <Card key={dIdx}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginBottom: 8 }}>{d.label}</Text>
               {d.exercises.map((e, j) => (
-                <Text key={j} style={{ color: colors.text2, fontSize: 12, marginBottom: 2 }}>
-                  {e.name} — {e.sets}×{e.reps}
-                </Text>
+                <View key={j} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: j < d.exercises.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                  <Text style={{ color: colors.text2, fontSize: 12, flex: 1 }}>
+                    {e.name} — {e.sets}×{e.reps}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    <Pressable onPress={() => moveExerciseInDay(dIdx, j, -1)} disabled={j === 0} hitSlop={6} style={{ opacity: j === 0 ? 0.3 : 1, padding: 4 }}>
+                      <Feather name="chevron-up" size={16} color={colors.text2} />
+                    </Pressable>
+                    <Pressable onPress={() => moveExerciseInDay(dIdx, j, 1)} disabled={j === d.exercises.length - 1} hitSlop={6} style={{ opacity: j === d.exercises.length - 1 ? 0.3 : 1, padding: 4 }}>
+                      <Feather name="chevron-down" size={16} color={colors.text2} />
+                    </Pressable>
+                  </View>
+                </View>
               ))}
             </Card>
           ))}
@@ -359,7 +386,7 @@ export function MesoWizard({
               <Text style={{ color: colors.accentText, fontWeight: '700' }}>✅ Create mesocycle</Text>
             </Pressable>
           </View>
-        </>
+        </FadeIn>
       )}
     </View>
   );

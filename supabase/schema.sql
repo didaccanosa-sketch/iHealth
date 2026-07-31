@@ -11,8 +11,10 @@ create table if not exists profiles (
   level text default 'principiante' check (level in ('principiante','avanzado')),
   lang text default 'es' check (lang in ('es','en')),
   theme text default 'dark' check (theme in ('dark','light')),
+  preferred_training_days int,
   created_at timestamptz default now()
 );
+alter table profiles add column if not exists preferred_training_days int;
 
 alter table profiles enable row level security;
 drop policy if exists "profiles: select own" on profiles;
