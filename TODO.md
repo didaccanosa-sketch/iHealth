@@ -339,9 +339,10 @@ De lo que no depende de nada más a lo que depende de otras piezas:
    existe ninguno todavía (**pendiente: ejecutar la tabla nueva contra
    Supabase**, como con las demás). Sigue sin haber UI para guardar un
    objetivo — de momento nadie inserta filas, así que en la práctica
-   sigue usando el genérico hasta el paso 4. Pendiente de decidir (no
-   resuelto en este paso): ¿se puede editar el objetivo a mano además de
-   por el motor?
+   sigue usando el genérico hasta el paso 4. **Decidido (2026-08-01, ver
+   paso 8): no se edita a mano.** El objetivo se reajusta solo mediante
+   feedback real (peso registrado vs. veredicto del Goal Engine), no
+   desde una pantalla de edición — ver "Adaptación dinámica" más abajo.
 4. **Delegación real** — conectar el output del paso 1 con Workout Engine
    (crear mesociclo) y Nutrition Engine (ya con el paso 3 hecho). El
    motor empieza a ser usable de verdad para las entradas Nutrition y
@@ -421,6 +422,13 @@ De lo que no depende de nada más a lo que depende de otras piezas:
 8. **Adaptación dinámica** — replanteo automático limitado (máx. 1/semana),
    necesita datos reales de adherencia fluyendo (workout/comidas →
    `Adherence` del User Model, ya pendiente aparte) más lo del paso 7.
+   **Decidido (2026-08-01): así se reajusta el objetivo de Nutrition, no
+   hay pantalla de edición manual.** Regla concreta: cuando el Goal
+   Engine marca `behind`/`off_track` (ej. "has ganado más peso del que
+   deberías"), el Strategy Planner reajusta las calorías/macros solo,
+   sin que el usuario las toque a mano — mismo límite de 1 replanteo/
+   semana y misma exigencia de explicar el porqué que ya tenía el resto
+   del punto 8.
 9. **Cardio y Funcional como motores reales** — amplía la Delegación del
    paso 4 a más modalidades; no bloquea nada de lo anterior, puede ir en
    paralelo cuando toque.
@@ -438,9 +446,11 @@ construcción" más arriba:
       ritmo en Progress). **Pendiente: ejecutar contra Supabase.**
 - [x] `nutrition.tsx` e `index.tsx` cargan el objetivo del usuario, caen
       al genérico solo si no existe aún
-- [ ] Pendiente de decidir: ¿se puede editar el objetivo a mano, o solo
-      recalcularlo pidiéndoselo al motor? (equivalente al "empezar desde
-      cero" manual que ya existe en Workout)
+- [x] **Decidido (2026-08-01): no se edita a mano.** El objetivo cambia
+      solo vía "Adaptación dinámica" (paso 8 del Recommendation Engine) —
+      reajuste automático cuando el feedback real (peso registrado) se
+      desvía del veredicto esperado del Goal Engine, no una pantalla de
+      edición aparte.
 
 ### Entrada Workout — posible cambio grande de estructura (Plan B)
 Hoy Training es 3 modos independientes (Hipertrofia/Fuerza construido,
@@ -469,6 +479,18 @@ cambiar la estructura ahora.
       (asume `session_index % days_per_week` de un único mesociclo), el
       widget "Up Next" de Today, Progress — hoy no se han tocado, siguen
       leyendo `mesocycles` directamente y funcionan igual que antes.
+- [ ] **Idea propuesta (2026-08-01) para resolver el punto de arriba:** en
+      vez de calcular "qué toca hoy" sobre la marcha con
+      `session_index % days_per_week` (asume una sola modalidad
+      secuencial), que el Recommendation Engine mantenga un calendario
+      interno explícito — qué toca cada día, de qué modalidad — que se
+      recalcula cada vez que pasa algo relevante (completar, saltarse un
+      día, etc.), en vez de inferirlo cada vez. Con eso asignar sesiones
+      de Cardio/Funcional al día que toque es más simple aunque esos
+      motores todavía no existan — el calendario puede reservar el hueco
+      igualmente. Sin diseñar el detalle todavía (¿tabla persistida o
+      calculado al vuelo?, cómo interactúa con `training_programs`) —
+      pendiente para el chat de Workout Engine.
 - [x] **Decidido (2026-08-01)**: las Piezas A-F se construyen tal cual están,
       sin esperar al contenedor — ninguna toca la relación mesociclo↔programa.
       Al revisar, A/B/C ya estaban construidas y D se completó en esta misma
