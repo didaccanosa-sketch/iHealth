@@ -14,7 +14,7 @@
 import { ActivityLevel, Experience, GoalType, Sex } from '../../features/profile/engine/types';
 import { GoalEvaluation, suggestPhaseForGoal } from './goal-engine';
 import { RecoveryEvaluation } from './recovery-engine';
-import { MacroGoals, Phase } from './types';
+import { Level, MacroGoals, Phase } from './types';
 
 // ─── INPUT ────────────────────────────────────────────────────────────────
 // Contexto ya "desenvuelto" (no el UserModelData completo con sus Fields) —
@@ -54,6 +54,7 @@ export type StrategyPlan = {
   training: {
     daysPerWeek: number;
     phase: Phase | null; // null solo si el objetivo no tiene fase asociada (ej. strength)
+    level: Level; // de la experiencia del usuario; 'principiante' si no se sabe (mismo default que profiles.level)
   };
   cardio: {
     sessionsPerWeek: number;
@@ -123,6 +124,12 @@ const GENERIC_SLEEP_HOURS_TARGET = 8;
 const GENERIC_DAILY_STEPS_TARGET = 8000;
 const DEFAULT_MEALS_PER_DAY = 4;
 
+// Mismo binario que ya usa el resto de la app (Experience del User Model).
+const EXPERIENCE_TO_LEVEL: Record<Experience, Level> = {
+  beginner: 'principiante',
+  advanced: 'avanzado',
+};
+
 // ─── VALIDATION — límites de seguridad/coherencia, ver paso 2 del orden de
 // construcción en TODO.md ──────────────────────────────────────────────────
 
@@ -191,6 +198,7 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
   }
 
   const phase = suggestPhaseForGoal(goalType);
+  const level = EXPERIENCE_TO_LEVEL[ctx.training.experience ?? 'beginner'];
 
   let cardioSessions = DEFAULT_CARDIO_SESSIONS[goalType];
   if (ctx.recovery?.readiness === 'fatigued') {
@@ -221,6 +229,7 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
     training: {
       daysPerWeek,
       phase,
+      level,
     },
     cardio: {
       sessionsPerWeek: cardioSessions,

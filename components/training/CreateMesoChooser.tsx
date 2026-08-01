@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useAppTheme } from '../../lib/theme-context';
 import { radius, spacing } from '../../constants/theme';
@@ -7,15 +7,19 @@ import { radius, spacing } from '../../constants/theme';
 export function CreateMesoChooser({
   onFromScratch,
   onUseTemplate,
+  onRecommend,
+  recommending,
   onCancel,
 }: {
   onFromScratch: () => void;
   onUseTemplate: () => void;
+  onRecommend: () => void;
+  recommending?: boolean;
   onCancel: () => void;
 }) {
   const { colors } = useAppTheme();
 
-  const options: { id: string; label: string; desc: string; icon: keyof typeof Feather.glyphMap; available: boolean; onPress?: () => void }[] = [
+  const options: { id: string; label: string; desc: string; icon: keyof typeof Feather.glyphMap; available: boolean; onPress?: () => void; loading?: boolean }[] = [
     {
       id: 'scratch',
       label: 'Start from scratch',
@@ -31,6 +35,15 @@ export function CreateMesoChooser({
       icon: 'copy',
       available: true,
       onPress: onUseTemplate,
+    },
+    {
+      id: 'recommend',
+      label: 'Recommend for me',
+      desc: 'Uses your goal to propose frequency, phase and level — you review before it gets created',
+      icon: 'zap',
+      available: true,
+      onPress: onRecommend,
+      loading: recommending,
     },
     {
       id: 'ai',
@@ -50,7 +63,7 @@ export function CreateMesoChooser({
       {options.map((o) => (
         <Pressable
           key={o.id}
-          disabled={!o.available}
+          disabled={!o.available || o.loading}
           onPress={o.onPress}
           style={{
             backgroundColor: colors.surface,
@@ -59,14 +72,18 @@ export function CreateMesoChooser({
             borderRadius: radius.lg,
             padding: spacing.lg,
             marginBottom: spacing.md,
-            opacity: o.available ? 1 : 0.55,
+            opacity: !o.available || o.loading ? 0.55 : 1,
             flexDirection: 'row',
             alignItems: 'center',
             gap: 14,
           }}
         >
           <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
-            <Feather name={o.icon} size={20} color={o.available ? colors.accent : colors.text2} />
+            {o.loading ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Feather name={o.icon} size={20} color={o.available ? colors.accent : colors.text2} />
+            )}
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

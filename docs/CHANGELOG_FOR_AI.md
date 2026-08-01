@@ -20,6 +20,19 @@ Format:
 
 ---
 
+## 2026-08-01 (madrugada — Recommendation Engine, paso 4 completo: entrada Workout)
+- `StrategyPlan.training` gained a `level` field (mapped from
+  `Experience`, defaults to `'principiante'`) — computed in
+  `lib/engine/recommendation-engine.ts`.
+- `CreateMesoChooser` has a new "Recommend for me" option (separate from
+  the still-unbuilt "Build it with AI chat"). Wired in
+  `app/(tabs)/training.tsx`: calls `getStrategyRecommendation`, builds the
+  day/exercise split with the existing `buildFocusSplit` generator (no
+  muscle-group priority yet), and jumps straight into the wizard's review
+  step (same pattern as picking a template) — nothing is created without
+  confirmation. All 3 entry points from the design doc now have at least
+  a first version except the combined Onboarding one.
+
 ## 2026-08-01 (noche — Recommendation Engine, paso 4 parcial: entrada Nutrition)
 - New `lib/data/recommendation.ts`: `buildStrategyContext()` (assembles
   real Goal Engine evaluation + Recovery Engine readiness + User Model into

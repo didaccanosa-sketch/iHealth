@@ -35,6 +35,8 @@ import {
 } from '../../lib/data/workout';
 import { Mesocycle, MesoSession } from '../../lib/engine/types';
 import { totalSessions, estimate1RM } from '../../lib/engine/workout-engine';
+import { buildFocusSplit } from '../../lib/engine/meso-templates';
+import { getStrategyRecommendation } from '../../lib/data/recommendation';
 
 type View = 'program' | 'menu' | 'createChoice' | 'templatePicker' | 'wizard' | 'session' | 'cardio';
 
@@ -48,6 +50,7 @@ export default function TrainingScreen() {
   const [mesos, setMesos] = useState<MesoSummary[]>([]);
 
   const [wizardInitial, setWizardInitial] = useState<NewMesoInput | null>(null);
+  const [recommending, setRecommending] = useState(false);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [meso, setMeso] = useState<Mesocycle | null>(null);
@@ -257,6 +260,32 @@ export default function TrainingScreen() {
     setView('wizard');
   }
 
+  async function handleRecommend() {
+    setRecommending(true);
+    try {
+      const plan = await getStrategyRecommendation(userId);
+      if (!plan) {
+        Alert.alert('Sin objetivo', 'Primero fija un objetivo en Progress — sin eso el motor no tiene qué calcular.');
+        return;
+      }
+      // El split día a día lo sigue generando el propio Workout Engine
+      // (sin prioridad de grupo muscular en esta pasada, ver
+      // docs/RECOMMENDATION_ENGINE.md) — el motor solo decide días/fase/nivel.
+      setWizardInitial({
+        level: plan.training.level,
+        phase: plan.training.phase ?? 'mantenimiento',
+        duration_weeks: 6,
+        days_per_week: plan.training.daysPerWeek,
+        days: buildFocusSplit(plan.training.daysPerWeek, []),
+      });
+      setView('wizard');
+    } catch (e: any) {
+      console.error('Could not compute recommendation:', e);
+      Alert.alert('Error', e.message || 'No se pudo calcular la recomendación, inténtalo de nuevo.');
+    }
+    setRecommending(false);
+  }
+
   const hasActiveMeso = mesos.some((m) => m.started && !m.finished && m.id !== selectedId);
 
   return (
@@ -299,6 +328,8 @@ export default function TrainingScreen() {
             setView('wizard');
           }}
           onUseTemplate={() => setView('templatePicker')}
+          onRecommend={handleRecommend}
+          recommending={recommending}
           onCancel={() => setView('menu')}
         />
       )}

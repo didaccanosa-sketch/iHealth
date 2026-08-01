@@ -292,9 +292,15 @@ De lo que no depende de nada más a lo que depende de otras piezas:
      "Recalcular con el motor" en Nutrition: enseña la propuesta antes de
      nada, solo se guarda si confirmas. Si no hay objetivo fijado, avisa
      en vez de fallar.
-   - [ ] **Workout** — pendiente, más grande: hay que enchufarlo dentro del
-     asistente de crear rutina (entra por "Build it with AI chat" en el
-     selector, ver sección Entrada Workout más abajo).
+   - [x] **Workout (2026-08-01)** — `StrategyPlan.training` ahora incluye
+     también `level` (de la experiencia del usuario, `lib/engine/recommendation-engine.ts`).
+     Nueva opción "Recommend for me" en el selector de creación de rutina
+     (aparte de "Build it with AI chat", que sigue siendo la pieza de chat
+     conversacional, distinta y todavía sin construir). Genera los
+     días/ejercicios con el mismo generador que ya usaba "Focused split"
+     (`buildFocusSplit`, sin prioridad de grupo muscular por ahora) y entra
+     directo a la pantalla de revisión del asistente — nada se crea sin
+     confirmar. Si no hay objetivo fijado, avisa en vez de fallar.
 5. **Daily planning** — de la estrategia confirmada a "el plan de hoy"
    (entreno de hoy, macros de hoy, foco de hoy) para el Home. Depende de
    que el paso 4 ya esté guardando algo real.
@@ -509,6 +515,21 @@ prescribir esfuerzo.
 - [ ] **iPhone**: requiere cuenta Apple Developer (99$/año) + TestFlight para compartir con amigos con iOS
 - [ ] **Alternativa más simple para compartir con cualquiera**: exportar a web + hosting gratuito (Netlify) — un link, sin instalar nada, funciona en Android e iPhone por igual
 - [ ] Antes de compartir con amigos: revisar límites del plan gratuito de Supabase, que el coste de la API de IA lo asumes tú, y si conviene reactivar la confirmación de email (ahora desactivada)
+
+### Antes de subir a Netlify — checklist (repaso 2026-08-01)
+- [ ] Ejecutar contra Supabase los cambios de esquema pendientes: tabla de
+      histórico de objetivos de nutrición (`macro_goals`), límite de un
+      registro de peso al día, contenedor de programas de entrenamiento
+      (`training_programs`)
+- [ ] Desplegar las funciones de IA pendientes: corrección ortográfica en
+      el análisis de comidas (`analyze-meal`), análisis de respuestas de
+      perfil (`analyze-profile-answer`)
+- [ ] Reactivar la confirmación de email (ahora desactivada) para evitar
+      cuentas con emails falsos al repartir un link público
+- [ ] Confirmar que el problema de permisos/caché de Supabase (404 en
+      tabla nueva) no reaparece con ninguna tabla
+- [ ] Revisar límites del plan gratuito de Supabase y coste esperado de la
+      API de IA según cuánta gente reciba el link
 
 ## Notas de arquitectura a tener en cuenta
 - El motor (`lib/engine/`) debe seguir sin tocar Supabase ni UI — toda lógica nueva pasa por ahí primero
