@@ -582,14 +582,9 @@ export const QUESTIONS: Question[] = [
     category: 'body',
     field: 'focusArea',
     text: '¿En qué zona te gustaría notar más el cambio?',
-    answerType: 'single_choice',
-    options: [
-      { label: 'Piernas', value: 'legs' },
-      { label: 'Brazos', value: 'arms' },
-      { label: 'Abdomen', value: 'abdomen' },
-      { label: 'Espalda', value: 'back' },
-      { label: 'General, todo el cuerpo', value: 'general' },
-    ],
+    answerType: 'text',
+    isList: true,
+    options: [{ label: 'Todo el cuerpo por igual', value: ['general'] }],
     priority: 56,
   },
 ];

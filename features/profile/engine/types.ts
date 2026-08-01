@@ -135,10 +135,8 @@ export type PreferencesModel = {
 
 // ─── BODY — solo lo estético/estructural que el propio usuario define como
 // objetivo, nada médico (eso sigue en Health, aparte) ────────────────────────
-export type FocusArea = 'legs' | 'arms' | 'abdomen' | 'back' | 'general';
-
 export type BodyModel = {
-  focusArea: Field<FocusArea>;
+  focusArea: Field<string[]>; // texto libre analizado con IA en tags, no una lista cerrada de zonas
 };
 
 // ─── HEALTH — sin contenido todavía, dato sensible, decisión aparte ─────────

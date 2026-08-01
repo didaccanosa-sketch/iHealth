@@ -197,7 +197,13 @@ export function evaluateGoal(input: EvaluateGoalInput): GoalEvaluation {
     currentValue =
       input.history.length ? input.history[input.history.length - 1].value : input.fallbackCurrentValue ?? null;
     const remainingForDirection = currentValue != null ? input.targetValue - currentValue : null;
-    if (currentValue != null && input.genericRateMagnitude != null && remainingForDirection !== 0) {
+    if (currentValue != null && remainingForDirection === 0) {
+      // Ya estás en el objetivo desde el único dato que hay (ej. tu peso
+      // inicial ya es tu peso objetivo) — no hace falta ningún ritmo,
+      // genérico ni medido, para saber esto.
+      ratePerWeek = 0;
+      confidence = 'generic';
+    } else if (currentValue != null && input.genericRateMagnitude != null) {
       ratePerWeek = Math.sign(remainingForDirection ?? 0) * Math.abs(input.genericRateMagnitude);
       confidence = 'generic';
       genericNote = 'Estimación genérica (ritmo típico, no tus datos todavía): ';

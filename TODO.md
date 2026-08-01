@@ -211,35 +211,37 @@ sesión no tenga que redescubrirla.
       en Supabase (`supabase functions deploy nutrition-insight`) — si no lo está, todo
       sigue funcionando pero siempre en modo fallback (reglas fijas), sin romper nada.
 
-## Estimación genérica del día 1 — diseñado, en construcción (2026-08-01)
+## Estimación genérica del día 1 — v1 construida (2026-08-01)
 Problema: el Goal Engine exige mínimo 3 registros repartidos en 5+ días antes
 de dar cualquier veredicto real — correcto, pero significa que un usuario
-nuevo no ve nada útil el primer día. Objetivo: dar una primera estimación
-"genérica" (basada en un ritmo típico, no en datos propios) desde el minuto
-uno para Peso, dejando claro que no es la misma confianza que una tendencia
-medida, y que se sustituye sola en cuanto hay histórico real.
-- [ ] `estimateFitnessBaseline`: nivel base (bajo/medio/alto) calculado —
-      sin pregunta nueva — a partir de campos que ya existen: actividad
-      diaria, días de entrenamiento/semana, experiencia y meses entrenando
-      (ver punto siguiente).
-- [ ] Pregunta nueva en Training: **meses entrenando de forma constante**
-      (`training.trainingMonths`, tipo `number`). El campo actual de
-      experiencia (`beginner`/`advanced`) es binario y flojo — esto afina
-      mucho más el ritmo esperado (alguien "principiante" de 2 semanas no es
-      lo mismo que uno de 8 meses sin resultados). Aplica a cualquier
-      objetivo, no solo a fuerza.
-- [ ] `goal-engine.ts`: nuevo campo `confidence: 'measured' | 'generic'` en
+nuevo no ve nada útil el primer día.
+- [x] `estimateFitnessBaseline`: nivel base (bajo/medio/alto) calculado —
+      sin pregunta nueva — a partir de actividad diaria, días de
+      entrenamiento/semana, experiencia y meses entrenando.
+- [x] Pregunta nueva en Training: **meses entrenando de forma constante**
+      (`training.trainingMonths`, tipo `number`) — más preciso que el
+      binario `beginner`/`advanced` solo.
+- [x] `goal-engine.ts`: campo `confidence: 'measured' | 'generic'` en
       `GoalEvaluation`. Si no hay tendencia real pero sí un punto de partida
       (peso inicial del perfil), usa una tasa genérica según objetivo +
-      nivel base en vez de `insufficient_data`. Marcado explícitamente como
-      estimación genérica en el mensaje, nunca mezclado con datos reales.
-- [ ] Solo para Peso por ahora. Fuerza se queda sin genérico — la marca
-      actual de un ejercicio no se pregunta de memoria, se espera a que el
-      usuario registre una sesión de verdad (decisión explícita: sin eso no
-      hay ninguna base honesta de la que partir).
-- [ ] `GoalCard.tsx`: mostrar el nivel de confianza en la tarjeta de
-      veredicto ("Estimación genérica, se irá afinando" vs. el mensaje
-      actual cuando ya es tendencia real).
+      nivel base en vez de `insufficient_data`. Marcado explícitamente en
+      el mensaje y con chip visual, nunca mezclado con datos reales.
+      Arreglado de paso un caso borde: si el único dato disponible ya
+      coincide con el objetivo (sin histórico ni ritmo), se devuelve
+      `reached` en vez de `insufficient_data`.
+- [x] Solo para Peso. Fuerza se queda sin genérico — decisión explícita, sin
+      una marca real registrada no hay ninguna base honesta de la que partir.
+- [x] Chip de confianza visible tanto en `GoalCard.tsx` (Progress) como en
+      `GoalSummaryCard.tsx` (Today).
+- [ ] **Pendiente, pero es tarea del chat "Recommendation Engine", no de
+      este**: sustituir el ritmo genérico por perfil demográfico por uno
+      basado en el déficit/superávit calórico real que ya calcula el
+      Strategy Planner (`KCAL_ADJUSTMENT` en `recommendation-engine.ts`,
+      construido) — mejor fundado que adivinar por edad/sexo/actividad,
+      sigue sin ser `measured`. Como el Goal Engine no debe leer directamente
+      de otro motor de dominio (esa conexión le toca al Recommendation
+      Engine, el único orquestador que lee varios motores a la vez), esto
+      se queda anotado aquí pero se construye en el otro chat.
 
 ## Onboarding real al registrarse — diseñado, pendiente de construir
 Hoy todas las preguntas del User Model salen poco a poco en la tarjeta de
