@@ -106,8 +106,10 @@
       duplicar lógica entre las dos vistas. Today usa `GoalSummaryCard`
       (solo lectura, glass, tapa a Progress); Progress usa `GoalCard`
       (fijar/editar objetivo, registrar peso, gráfico).
-- [x] Borrada la tabla `goals` de `schema.sql` — estaba duplicada con
-      `user_model.goals` y ningún código la usaba.
+- [x] Borradas las tablas `goals` y `goal_predictions` de `schema.sql` —
+      restos del scaffolding original, duplicadas con `user_model.goals`,
+      ningún código las usaba. `goal_predictions` dependía de `goals` por
+      FK, así que en Supabase hay que borrarla a ella primero.
 - [ ] Pendiente encima de esto: que el Recommendation Engine consulte el
       veredicto del Goal Engine al generar recomendaciones; conectar
       Stamina (cuando exista Cardio v2) y Mobility (cuando exista su

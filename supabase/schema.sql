@@ -134,21 +134,6 @@ alter table meal_templates enable row level security;
 drop policy if exists "meal_templates: all own" on meal_templates;
 create policy "meal_templates: all own" on meal_templates for all using (auth.uid() = user_id);
 
--- ─── OBJETIVO: histórico de recálculos de ETA (Goal Engine) ─────────────────
-create table if not exists goal_predictions (
-  id uuid primary key default gen_random_uuid(),
-  goal_id uuid references goals(id) on delete cascade not null,
-  user_id uuid references profiles(id) on delete cascade not null,
-  eta_date date,
-  is_realistic boolean,
-  note text,
-  created_at timestamptz default now()
-);
-
-alter table goal_predictions enable row level security;
-drop policy if exists "goal_predictions: all own" on goal_predictions;
-create policy "goal_predictions: all own" on goal_predictions for all using (auth.uid() = user_id);
-
 -- ─── WORKOUT ENGINE: mesociclos ──────────────────────────────────────────────
 create table if not exists mesocycles (
   id uuid primary key default gen_random_uuid(),
