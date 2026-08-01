@@ -7,12 +7,14 @@ import { Card } from '../../components/Card';
 import { useAppTheme } from '../../lib/theme-context';
 import { useAuth } from '../../lib/auth-context';
 import { spacing, radius } from '../../constants/theme';
-import { fetchMealsForDate } from '../../lib/data/nutrition';
+import { fetchMealsForDate, fetchMealsForDateRange, getNutritionInsight } from '../../lib/data/nutrition';
 import { computeMacroStatus, DEFAULT_GOALS, nutritionCoachLine } from '../../lib/engine/nutrition-engine';
+import { groupMealsByDate } from '../../lib/engine/nutritionInsight';
 import { fetchProfile } from '../../lib/data/profile';
 import { fetchMesocycles, fetchMesocycleDetail } from '../../lib/data/workout';
 import { getSessionDef } from '../../lib/engine/workout-engine';
 import { Meal } from '../../lib/engine/types';
+import { QuestionCard } from '../../features/profile/QuestionCard';
 
 type NextSession = { dayLabel: string; week: number; isDeload: boolean } | null;
 
@@ -38,6 +40,7 @@ export default function TodayScreen() {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [nextSession, setNextSession] = useState<NextSession>(null);
   const [hasActiveMeso, setHasActiveMeso] = useState(false);
+  const [nutritionLine, setNutritionLine] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -50,6 +53,11 @@ export default function TodayScreen() {
       setName(profile?.name || null);
       setMeals(todaysMeals);
 
+      // Frase de reglas fijas al instante, para que Today no se quede en
+      // blanco mientras llega (o no) la del Insight Engine con IA.
+      const fallbackLine = nutritionCoachLine(computeMacroStatus(todaysMeals, DEFAULT_GOALS));
+      setNutritionLine(fallbackLine);
+
       const active = mesos.find((m) => m.started && !m.finished);
       if (active) {
         setHasActiveMeso(true);
@@ -60,6 +68,19 @@ export default function TodayScreen() {
         setHasActiveMeso(false);
         setNextSession(null);
       }
+
+      // Insight con IA en segundo plano — no bloquea la pantalla. Si tarda,
+      // falla o la función aún no está desplegada, se queda el fallback.
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const threeDaysAgoStr = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      fetchMealsForDateRange(threeDaysAgoStr, todayStr)
+        .then((recentMeals) =>
+          getNutritionInsight(userId, todaysMeals, groupMealsByDate(recentMeals), DEFAULT_GOALS, fallbackLine)
+        )
+        .then((result) => setNutritionLine(result.line))
+        .catch(() => {
+          // ya tenemos el fallback puesto, no hace falta hacer nada más
+        });
     } catch {
       // si algo falla, se muestran los estados vacíos, sin romper la pantalla
     }
@@ -79,7 +100,7 @@ export default function TodayScreen() {
   const initial = (name || session?.user.email || '?').trim().charAt(0).toUpperCase();
 
   const summaryLine = (() => {
-    const parts: string[] = [nutritionCoachLine(status)];
+    const parts: string[] = [nutritionLine || nutritionCoachLine(status)];
     if (nextSession) parts.push(`Next up: ${nextSession.dayLabel} (week ${nextSession.week}).`);
     return parts.join(' ');
   })();
@@ -93,9 +114,12 @@ export default function TodayScreen() {
             <Text style={{ color: colors.text, fontSize: 28, fontWeight: '700', letterSpacing: -0.5 }}>{name || 'there'}</Text>
             <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2, textTransform: 'capitalize' }}>{todayLabel()}</Text>
           </View>
-          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+          <Pressable
+            onPress={() => router.push('/profile')}
+            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}
+          >
             <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>{initial}</Text>
-          </View>
+          </Pressable>
         </View>
 
         {/* Objetivo — placeholder hasta que exista el Goal Engine */}
@@ -167,6 +191,8 @@ export default function TodayScreen() {
             Water, sleep and weight trend widgets will live here once those pieces are built.
           </Text>
         </Card>
+
+        <QuestionCard userId={userId} />
       </ScrollView>
     </SafeAreaView>
   );

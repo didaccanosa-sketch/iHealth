@@ -382,3 +382,36 @@ alter table day_template_meals enable row level security;
 drop policy if exists "day_template_meals: all own" on day_template_meals;
 create policy "day_template_meals: all own" on day_template_meals for all using (auth.uid() = user_id);
 grant select, insert, update, delete on day_template_meals to authenticated, anon;
+
+-- ─── NUTRITION INSIGHT ENGINE (frase de Today generada por IA, cacheada por
+-- día para no llamar a la IA en cada visita) ─────────────────────────────────
+create table if not exists nutrition_insights (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  logged_at date not null default current_date,
+  line text not null,
+  source text default 'ai' check (source in ('ai','fallback')),
+  meals_signature text, -- huella de las comidas usadas (para saber si hay que regenerar)
+  created_at timestamptz default now(),
+  unique (user_id, logged_at)
+);
+alter table nutrition_insights enable row level security;
+drop policy if exists "nutrition_insights: all own" on nutrition_insights;
+create policy "nutrition_insights: all own" on nutrition_insights for all using (auth.uid() = user_id);
+grant select, insert, update, delete on nutrition_insights to authenticated, anon;
+
+-- ─── USER MODEL ENGINE (fuente única de verdad de personalización — ver
+-- docs/USER_MODEL.md). Una fila por usuario, todo el modelo en un jsonb:
+-- cada campo hoja es { value, status: 'unknown'|'confirmed', updatedAt }.
+-- No sustituye a `profiles` (datos de cuenta) ni a las tablas de cada
+-- engine — es el sitio donde vive la personalización transversal.
+create table if not exists user_model (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  data jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table user_model enable row level security;
+drop policy if exists "user_model: all own" on user_model;
+create policy "user_model: all own" on user_model for all using (auth.uid() = user_id);
+grant select, insert, update, delete on user_model to authenticated, anon;

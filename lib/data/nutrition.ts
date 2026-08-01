@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
-import { Meal } from '../engine/types';
+import { Meal, MacroGoals } from '../engine/types';
+import { computeNutritionInsightFacts, nutritionInsightSignature } from '../engine/nutritionInsight';
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -11,6 +12,19 @@ export async function fetchMealsForDate(date: string = todayKey()): Promise<Meal
     .select('id, description, kcal, protein_g, carbs_g, fat_g, fiber_g, source, meal_slot, logged_at, logged_time')
     .eq('logged_at', date)
     .order('logged_time', { ascending: true });
+  if (error) throw error;
+  return (data as Meal[]) || [];
+}
+
+// Comidas de un rango de fechas (usado para calcular la tendencia del Insight
+// Engine) — `fromDate` inclusivo, `toDate` exclusivo.
+export async function fetchMealsForDateRange(fromDate: string, toDate: string): Promise<Meal[]> {
+  const { data, error } = await supabase
+    .from('meals')
+    .select('id, description, kcal, protein_g, carbs_g, fat_g, fiber_g, source, meal_slot, logged_at, logged_time')
+    .gte('logged_at', fromDate)
+    .lt('logged_at', toDate)
+    .order('logged_at', { ascending: true });
   if (error) throw error;
   return (data as Meal[]) || [];
 }
@@ -218,4 +232,83 @@ export async function applyDayTemplate(userId: string, template: DayTemplate, da
 export async function deleteDayTemplate(id: string) {
   const { error } = await supabase.from('day_templates').delete().eq('id', id);
   if (error) throw error;
+}
+
+// ─── NUTRITION INSIGHT ENGINE ────────────────────────────────────────────────
+// Frase corta tipo "entrenador" de la pantalla Today, generada con IA a partir
+// de hechos calculados en el motor (ver lib/engine/nutritionInsight.ts) y
+// cacheada un día a la vez para no llamar a la IA en cada visita.
+
+type CachedInsight = { line: string; meals_signature: string | null };
+
+async function fetchCachedNutritionInsight(date: string): Promise<CachedInsight | null> {
+  const { data, error } = await supabase
+    .from('nutrition_insights')
+    .select('line, meals_signature')
+    .eq('logged_at', date)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function upsertNutritionInsight(
+  userId: string,
+  date: string,
+  line: string,
+  source: 'ai' | 'fallback',
+  signature: string
+) {
+  const { error } = await supabase
+    .from('nutrition_insights')
+    .upsert(
+      { user_id: userId, logged_at: date, line, source, meals_signature: signature },
+      { onConflict: 'user_id,logged_at' }
+    );
+  if (error) throw error;
+}
+
+// Llama a la Edge Function que redacta la frase con IA a partir de los hechos
+// ya calculados (nunca comidas en crudo — ver supabase/functions/nutrition-insight).
+async function generateNutritionInsightLine(facts: ReturnType<typeof computeNutritionInsightFacts>): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('nutrition-insight', {
+    body: { facts },
+  });
+  if (error) throw error;
+  if (!data?.line) throw new Error('Empty insight response');
+  return data.line as string;
+}
+
+// Punto de entrada único para la pantalla Today: devuelve la frase a mostrar
+// y de dónde vino ('cached' | 'ai' | 'fallback'). Nunca lanza — si la IA falla
+// (sin red, cuota, función no desplegada...) cae al texto de reglas fijas que
+// se le pase como `fallbackLine`, sin romper la pantalla.
+export async function getNutritionInsight(
+  userId: string,
+  todayMeals: Meal[],
+  recentDaysMeals: Meal[][],
+  goals: MacroGoals,
+  fallbackLine: string,
+  date: string = todayKey()
+): Promise<{ line: string; source: 'cached' | 'ai' | 'fallback' }> {
+  const signature = nutritionInsightSignature(todayMeals);
+
+  try {
+    const cached = await fetchCachedNutritionInsight(date);
+    if (cached && cached.meals_signature === signature) {
+      return { line: cached.line, source: 'cached' };
+    }
+  } catch {
+    // si falla la lectura de caché, seguimos e intentamos generar una nueva
+  }
+
+  try {
+    const facts = computeNutritionInsightFacts(todayMeals, recentDaysMeals, goals);
+    const line = await generateNutritionInsightLine(facts);
+    upsertNutritionInsight(userId, date, line, 'ai', signature).catch(() => {
+      // el cacheo es una optimización, no algo crítico — si falla, no pasa nada
+    });
+    return { line, source: 'ai' };
+  } catch {
+    return { line: fallbackLine, source: 'fallback' };
+  }
 }

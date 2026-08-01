@@ -37,6 +37,22 @@
   Engine completo del documento de producto. El motor manual actual (mesociclos, wizard) sigue
   siendo la base "gratis" de control total, no se sustituye.
 
+## User Model Engine — v1 construido (2026-08-01)
+- [x] Tabla `user_model` (jsonb, status unknown/confirmed), motor en
+      `features/profile/engine/` (tipos, get/setField, Question Engine
+      declarativo con preguntas para goals/training/nutrition/lifestyle),
+      pantalla `app/profile.tsx` para Identity (age/sex/height/starting
+      weight, editable a mano), y tarjeta de una pregunta a la vez
+      incrustada en Today. Detalle completo en `docs/USER_MODEL.md`.
+      Categorías Body/Motivation/Preferences/Health quedan definidas pero
+      vacías (Health pendiente de una decisión aparte, dato sensible).
+      Adherence se añadió a las categorías con contenido (se infiere del
+      comportamiento — el enganche real a workout/nutrition engine para
+      que se autorellene queda pendiente, no era parte de esta pasada).
+- [ ] Pendiente encima de esto: Goal Chat (onboarding conversacional IA),
+      auto-relleno real desde otros engines hacia `user_model`,
+      Recommendation Engine leyéndolo.
+
 ## En cola (próximo) — Review de la última actualización (Cardio + Plantillas)
 
 - [ ] **PIEZA A — Rehacer el flujo de creación con plantilla (bug de pregunta repetida)**
@@ -106,7 +122,7 @@
 - [ ] **Recovery Engine** — hoy solo se registra feedback de sesión, no se usa para nada automatizado
 - [ ] **Recommendation Engine** de verdad (junta Workout+Nutrition+Goal+Recovery+Insight)
 - [ ] **Today** — pantalla principal: card de objetivo, resumen, widget de Nutrición (anillo único + frase, sin números crudos), widget "Up Next" de Entrenamiento, FAB centrado persistente en las 4 pestañas
-- [ ] **Perfil** (pantalla aparte, no pestaña) — email, cambiar contraseña/email, cerrar sesión, mover aquí el toggle de tema (hoy en Progress)
+- [~] **Perfil** (pantalla aparte, no pestaña) — `app/profile.tsx` ya existe con la sección de Identity (age/sex/height/starting weight). Falta: email, cambiar contraseña/email, cerrar sesión, mover aquí el toggle de tema (hoy en Progress)
 - [ ] **Agua y sueño** — no se registran todavía
 - [ ] **Fotos de comida** — analizar con IA y descartar la imagen después
 - [ ] **Fotos corporales** para estimar % graso aproximado (Progreso)

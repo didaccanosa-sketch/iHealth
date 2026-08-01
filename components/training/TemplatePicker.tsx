@@ -59,7 +59,6 @@ export function TemplatePicker({
   // se puede cambiar aquí mismo para este meso en concreto.
   const [days, setDays] = useState<number | null>(null);
   const [daysLoading, setDaysLoading] = useState(true);
-  const [editingDays, setEditingDays] = useState(false);
   const [showAllDays, setShowAllDays] = useState(false);
 
   const [focusGroups, setFocusGroups] = useState<MuscleGroup[]>([]);
@@ -68,7 +67,6 @@ export function TemplatePicker({
     fetchPreferredTrainingDays(userId)
       .then((d) => {
         setDays(d);
-        setEditingDays(d == null);
       })
       .finally(() => setDaysLoading(false));
   }, [userId]);
@@ -92,7 +90,6 @@ export function TemplatePicker({
 
   async function chooseDays(n: number) {
     setDays(n);
-    setEditingDays(false);
     try {
       await savePreferredTrainingDays(userId, n);
     } catch {
@@ -153,19 +150,12 @@ export function TemplatePicker({
 
       <Card>
         <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Training days per week</Text>
-        {!editingDays ? (
-          <Pressable onPress={() => setEditingDays(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>{days} days/week</Text>
-            <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>Change</Text>
-          </Pressable>
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {[1, 2, 3, 4, 5, 6, 7].map((n) => (
-              <Chip key={n} label={String(n)} on={days === n} onPress={() => chooseDays(n)} />
-            ))}
-          </View>
-        )}
-        {days != null && !editingDays && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+          {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+            <Chip key={n} label={String(n)} on={days === n} onPress={() => chooseDays(n)} />
+          ))}
+        </View>
+        {days != null && (
           <Text style={{ color: colors.text2, fontSize: 11, marginTop: 4 }}>Saved as your default — change it any time here or in Settings later.</Text>
         )}
       </Card>
