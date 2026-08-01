@@ -17,6 +17,7 @@ import {
   GENERIC_SLEEP_HOURS_TARGET,
   GENERIC_DAILY_STEPS_TARGET,
 } from '../../lib/engine/recommendation-engine';
+import { computeDailyAdherence } from '../../lib/engine/adherence-engine';
 
 const WATER_GLASS_ML = 250;
 
@@ -122,9 +123,11 @@ export function TrackingCard() {
     );
   }
 
-  const waterPct = data.waterMl / GENERIC_DAILY_WATER_ML_TARGET;
-  const sleepPct = (data.sleepHours ?? 0) / GENERIC_SLEEP_HOURS_TARGET;
-  const stepsPct = (data.steps ?? 0) / GENERIC_DAILY_STEPS_TARGET;
+  const { water: waterPct, sleep: sleepPct, steps: stepsPct } = computeDailyAdherence(data, {
+    waterMl: GENERIC_DAILY_WATER_ML_TARGET,
+    sleepHours: GENERIC_SLEEP_HOURS_TARGET,
+    steps: GENERIC_DAILY_STEPS_TARGET,
+  });
 
   return (
     <Card>

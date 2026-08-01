@@ -3,7 +3,7 @@
 // para llegar hasta allí. El halo es progreso de VALOR (cuánto llevas
 // recorrido desde tu punto de partida), no progreso de tiempo — decisión
 // explícita: refleja lo que de verdad has avanzado, sea cual sea el ritmo.
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text, Pressable, View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Card } from '../Card';
@@ -12,6 +12,35 @@ import { useAuth } from '../../lib/auth-context';
 import { spacing } from '../../constants/theme';
 import { GOAL_TYPE_OPTIONS, STATUS_TEXT, statusColor } from './shared';
 import { useGoalEvaluation } from './useGoalEvaluation';
+import { fetchTodayTracking } from '../../lib/data/tracking';
+import { computeDailyAdherence, DailyAdherence } from '../../lib/engine/adherence-engine';
+import {
+  GENERIC_DAILY_WATER_ML_TARGET,
+  GENERIC_SLEEP_HOURS_TARGET,
+  GENERIC_DAILY_STEPS_TARGET,
+} from '../../lib/engine/recommendation-engine';
+
+// Mini-ring de solo lectura para la fila de adherencia — mismo lenguaje
+// visual que el ring del goal, pero pequeño y sin texto dentro (estilo
+// Apple Activity: de un vistazo, sin necesidad de leer un número).
+function AdherenceDot({ pct, color, label }: { pct: number; color: string; label: string }) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={{ alignItems: 'center', gap: 4 }}>
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          borderWidth: 3,
+          borderColor: pct > 0 ? color : colors.border,
+          opacity: Math.max(0.35, pct),
+        }}
+      />
+      <Text style={{ color: colors.text2, fontSize: 9, fontWeight: '700' }}>{label}</Text>
+    </View>
+  );
+}
 
 export function GoalSummaryCard() {
   const { colors } = useAppTheme();
@@ -20,6 +49,25 @@ export function GoalSummaryCard() {
   const userId = session?.user.id as string;
 
   const { loading, hasGoal, goalType, metric, evaluation, evalLoading, progress } = useGoalEvaluation(userId);
+
+  const [adherence, setAdherence] = useState<DailyAdherence | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    fetchTodayTracking(userId)
+      .then((today) =>
+        setAdherence(
+          computeDailyAdherence(today, {
+            waterMl: GENERIC_DAILY_WATER_ML_TARGET,
+            sleepHours: GENERIC_SLEEP_HOURS_TARGET,
+            steps: GENERIC_DAILY_STEPS_TARGET,
+          })
+        )
+      )
+      .catch(() => {
+        // si falla, simplemente no se muestra la fila de adherencia
+      });
+  }, [userId]);
 
   if (loading) {
     return (
@@ -99,6 +147,14 @@ export function GoalSummaryCard() {
               </Text>
             )}
           </View>
+
+          {adherence && (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <AdherenceDot pct={adherence.water} color={colors.accent} label="H2O" />
+              <AdherenceDot pct={adherence.sleep} color={colors.accent} label="SLEEP" />
+              <AdherenceDot pct={adherence.steps} color={colors.accent} label="STEPS" />
+            </View>
+          )}
         </View>
       </Card>
     </Pressable>
