@@ -352,6 +352,11 @@ De lo que no depende de nada más a lo que depende de otras piezas:
      "Recalcular con el motor" en Nutrition: enseña la propuesta antes de
      nada, solo se guarda si confirmas. Si no hay objetivo fijado, avisa
      en vez de fallar.
+   - [x] **Arreglado (2026-08-01): fallaba al aplicar** — "Could not find
+     the 'mealsPerDay' column of 'macro_goals'". `saveMacroGoal`
+     esparcía el objeto completo del Strategy Planner (que incluye
+     `mealsPerDay`) directo al insert; ahora filtra explícitamente solo
+     los 5 campos que existen en la tabla.
    - [x] **Arreglado (2026-08-01): la propuesta usaba diálogos nativos del
      navegador** (`window.confirm`/`Alert.alert`) — en web se veía como un
      aviso suelto de "localhost" en vez de parte de la app. Ahora Nutrition

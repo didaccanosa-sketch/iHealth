@@ -51,9 +51,14 @@ export async function saveMacroGoal(
   goal: MacroGoals,
   source: 'manual' | 'recommendation_engine' = 'manual'
 ): Promise<MacroGoals> {
+  // Se filtran los campos explícitamente (en vez de esparcir `goal` tal
+  // cual) — quien llama puede pasar un objeto con campos de más (ej. el
+  // Strategy Planner añade `mealsPerDay`, que no existe en esta tabla) y
+  // no debe colarse en el insert.
+  const { kcal, protein_g, carbs_g, fat_g, fiber_g } = goal;
   const { data, error } = await supabase
     .from('macro_goals')
-    .insert({ ...goal, user_id: userId, source })
+    .insert({ kcal, protein_g, carbs_g, fat_g, fiber_g, user_id: userId, source })
     .select('kcal, protein_g, carbs_g, fat_g, fiber_g')
     .single();
   if (error) throw error;
