@@ -20,8 +20,11 @@ import { useAuth } from '../../lib/auth-context';
 import { radius, spacing } from '../../constants/theme';
 import { Meal } from '../../lib/engine/types';
 import { computeMacroStatus, DEFAULT_GOALS, nutritionCoachLine } from '../../lib/engine/nutrition-engine';
+import { groupMealsByDate } from '../../lib/engine/nutritionInsight';
 import {
   fetchMealsForDate,
+  fetchMealsForDateRange,
+  getNutritionInsight,
   insertMeal,
   updateMeal,
   deleteMeal,
@@ -56,6 +59,7 @@ export default function NutritionScreen() {
   const [dayTemplates, setDayTemplates] = useState<DayTemplate[]>([]);
   const [savingDayTemplate, setSavingDayTemplate] = useState(false);
   const [dayTemplateName, setDayTemplateName] = useState('');
+  const [nutritionLine, setNutritionLine] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,6 +70,22 @@ export default function NutritionScreen() {
       setTemplates(tmpl);
       const dayTmpl = await fetchDayTemplates(userId);
       setDayTemplates(dayTmpl);
+
+      // Frase de reglas fijas al instante; el Insight Engine con IA la sustituye
+      // en segundo plano si responde a tiempo (mismo patrón que Today).
+      const fallbackLine = nutritionCoachLine(computeMacroStatus(data, DEFAULT_GOALS));
+      setNutritionLine(fallbackLine);
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const threeDaysAgoStr = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      fetchMealsForDateRange(threeDaysAgoStr, todayStr)
+        .then((recentMeals) =>
+          getNutritionInsight(userId, data, groupMealsByDate(recentMeals), DEFAULT_GOALS, fallbackLine)
+        )
+        .then((result) => setNutritionLine(result.line))
+        .catch(() => {
+          // ya tenemos el fallback puesto, no hace falta hacer nada más
+        });
     } catch (e: any) {
       setError(e.message);
     }
@@ -246,7 +266,7 @@ export default function NutritionScreen() {
         <MacroBar label="Fat" current={status.totals.fat_g} goal={status.goals.fat_g} unit="g" color={colors.vizFat} />
         <MacroBar label="Fiber" current={status.totals.fiber_g} goal={status.goals.fiber_g} unit="g" color={colors.success} />
         <Text style={{ color: colors.text, fontSize: 13, marginTop: 4, lineHeight: 18 }}>
-          {nutritionCoachLine(status)}
+          {nutritionLine || nutritionCoachLine(status)}
         </Text>
       </Card>
 

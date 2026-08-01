@@ -35,11 +35,15 @@ export function groupMealsByDate(meals: Meal[]): Meal[][] {
 // Huella simple de un conjunto de comidas — sirve para saber si hay que
 // regenerar la frase (ha cambiado algo) o si el día sigue igual que cuando se
 // generó la última vez.
-export function nutritionInsightSignature(meals: Meal[]): string {
-  return meals
+export function nutritionInsightSignature(meals: Meal[], recentDaysMeals: Meal[][] = []): string {
+  const today = meals
     .map((m) => `${m.id}:${m.kcal}:${m.protein_g}`)
     .sort()
     .join('|');
+  const recent = recentDaysMeals
+    .map((day) => day.map((m) => `${m.id}:${m.kcal}:${m.protein_g}`).sort().join(','))
+    .join('|');
+  return `${today}::${recent}`;
 }
 
 export function computeNutritionInsightFacts(

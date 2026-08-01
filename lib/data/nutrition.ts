@@ -290,7 +290,7 @@ export async function getNutritionInsight(
   fallbackLine: string,
   date: string = todayKey()
 ): Promise<{ line: string; source: 'cached' | 'ai' | 'fallback' }> {
-  const signature = nutritionInsightSignature(todayMeals);
+  const signature = nutritionInsightSignature(todayMeals, recentDaysMeals);
 
   try {
     const cached = await fetchCachedNutritionInsight(date);

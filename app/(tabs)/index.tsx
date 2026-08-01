@@ -11,8 +11,9 @@ import { fetchMealsForDate, fetchMealsForDateRange, getNutritionInsight } from '
 import { computeMacroStatus, DEFAULT_GOALS, nutritionCoachLine } from '../../lib/engine/nutrition-engine';
 import { groupMealsByDate } from '../../lib/engine/nutritionInsight';
 import { fetchProfile } from '../../lib/data/profile';
-import { fetchMesocycles, fetchMesocycleDetail } from '../../lib/data/workout';
+import { fetchMesocycles, fetchMesocycleDetail, fetchRecentSessionFeedback } from '../../lib/data/workout';
 import { getSessionDef } from '../../lib/engine/workout-engine';
+import { evaluateRecovery, RecoveryEvaluation } from '../../lib/engine/recovery-engine';
 import { Meal } from '../../lib/engine/types';
 import { QuestionCard } from '../../features/profile/QuestionCard';
 import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
@@ -42,17 +43,20 @@ export default function TodayScreen() {
   const [nextSession, setNextSession] = useState<NextSession>(null);
   const [hasActiveMeso, setHasActiveMeso] = useState(false);
   const [nutritionLine, setNutritionLine] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryEvaluation | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [profile, todaysMeals, mesos] = await Promise.all([
+      const [profile, todaysMeals, mesos, recentFeedback] = await Promise.all([
         fetchProfile(userId).catch(() => null),
         fetchMealsForDate(),
         fetchMesocycles(userId).catch(() => []),
+        fetchRecentSessionFeedback(userId).catch(() => []),
       ]);
       setName(profile?.name || null);
       setMeals(todaysMeals);
+      setRecovery(evaluateRecovery(recentFeedback));
 
       // Frase de reglas fijas al instante, para que Today no se quede en
       // blanco mientras llega (o no) la del Insight Engine con IA.
@@ -135,6 +139,28 @@ export default function TodayScreen() {
                 <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, flex: 1 }}>{summaryLine}</Text>
               </View>
             </Card>
+
+            {recovery && (
+              <Card>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 }}>RECOVERY</Text>
+                  <View style={{ backgroundColor: colors.surface2, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <Text style={{ color: colors.text2, fontSize: 10, fontWeight: '700' }}>PROVISIONAL</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <Feather
+                    name="battery-charging"
+                    size={16}
+                    color={
+                      recovery.readiness === 'fresh' ? colors.success : recovery.readiness === 'moderate' ? colors.warning : colors.danger
+                    }
+                    style={{ marginTop: 2 }}
+                  />
+                  <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, flex: 1 }}>{recovery.message}</Text>
+                </View>
+              </Card>
+            )}
 
             <View style={{ flexDirection: 'row', gap: spacing.md }}>
               <Pressable onPress={() => router.push('/nutrition')} style={{ flex: 1 }}>

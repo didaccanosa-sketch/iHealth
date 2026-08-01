@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { Mesocycle, MesoDay, MesoExercise, MesoSession, Level, Phase, MuscleGroup } from '../engine/types';
+import { RecoverySessionInput } from '../engine/recovery-engine';
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -79,6 +80,72 @@ export async function fetchMesocycleDetail(id: string): Promise<Mesocycle> {
   }));
 
   return { ...meso, days: mesoDays } as Mesocycle;
+}
+
+// Para el Recovery Engine (lib/engine/recovery-engine.ts): trae las sesiones
+// completadas recientes de un usuario (across todos sus mesociclos, no solo
+// el activo) junto con qué grupos musculares entrenó cada una. El feedback
+// de sesión (difficulty/joint_pain/joint) ya se guardaba desde antes en
+// `meso_sessions`, pero nada lo leía todavía — esto es lo que lo conecta.
+export async function fetchRecentSessionFeedback(userId: string, sinceDaysAgo = 14): Promise<RecoverySessionInput[]> {
+  const cutoff = new Date(Date.now() - sinceDaysAgo * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const { data: sessions, error } = await supabase
+    .from('meso_sessions')
+    .select('mesocycle_id, session_index, completed_at, difficulty, joint_pain, joint')
+    .eq('user_id', userId)
+    .eq('completed', true)
+    .gte('completed_at', cutoff);
+  if (error) throw error;
+  if (!sessions || !sessions.length) return [];
+
+  const mesoIds = [...new Set(sessions.map((s: any) => s.mesocycle_id))];
+
+  const { data: mesos, error: errMesos } = await supabase
+    .from('mesocycles')
+    .select('id, days_per_week')
+    .in('id', mesoIds);
+  if (errMesos) throw errMesos;
+
+  const { data: days, error: errDays } = await supabase
+    .from('meso_days')
+    .select('id, mesocycle_id, day_index')
+    .in('mesocycle_id', mesoIds);
+  if (errDays) throw errDays;
+
+  const { data: exercises, error: errEx } = await supabase
+    .from('meso_exercises')
+    .select('meso_day_id, muscle_group')
+    .in('meso_day_id', (days || []).map((d: any) => d.id));
+  if (errEx) throw errEx;
+
+  const perWeekByMeso = new Map<string, number>((mesos || []).map((m: any) => [m.id, m.days_per_week]));
+
+  // Grupos musculares por (mesociclo, day_index) — el day_index de
+  // meso_days es el día dentro de la semana, igual que en getSessionDef.
+  const muscleGroupsByDay = new Map<string, MuscleGroup[]>();
+  (days || []).forEach((d: any) => {
+    const key = `${d.mesocycle_id}:${d.day_index}`;
+    const groups = (exercises || [])
+      .filter((e: any) => e.meso_day_id === d.id)
+      .map((e: any) => e.muscle_group as MuscleGroup);
+    muscleGroupsByDay.set(key, groups);
+  });
+
+  return sessions
+    .map((s: any) => {
+      const perWeek = perWeekByMeso.get(s.mesocycle_id) || 1;
+      const dayIndex = s.session_index % perWeek;
+      const muscleGroups = muscleGroupsByDay.get(`${s.mesocycle_id}:${dayIndex}`) || [];
+      return {
+        completedAt: s.completed_at,
+        muscleGroups,
+        difficulty: s.difficulty,
+        jointPain: s.joint_pain,
+        joint: s.joint,
+      } as RecoverySessionInput;
+    })
+    .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1));
 }
 
 export async function fetchSessions(mesocycleId: string, userId: string): Promise<Record<number, MesoSession>> {

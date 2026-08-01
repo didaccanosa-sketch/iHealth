@@ -122,6 +122,22 @@
       Stamina (cuando exista Cardio v2) y Mobility (cuando exista su
       tracking); fotos corporales para objetivos de composición corporal.
 
+## Insight Engine (Nutrition) — ya construido, revisado hoy (2026-08-01)
+- [x] Ya estaba construido de antes (el TODO estaba desactualizado y decía que no):
+      hechos categóricos en `lib/engine/nutritionInsight.ts` (nunca números crudos) →
+      función `nutrition-insight` que los redacta en una frase con Claude → caché en
+      tabla `nutrition_insights` por firma de comidas → fallback a `nutritionCoachLine`
+      (reglas fijas) si la IA falla o no responde a tiempo.
+- [x] Firma de caché (`nutritionInsightSignature`) solo dependía de las comidas de hoy,
+      no de la ventana de 3 días que también entra en el cálculo de `trend` — ahora
+      incluye también los días recientes, así que cambiar una comida de ayer invalida
+      bien la caché de hoy.
+- [x] Enchufado también en el tab de Nutrition (antes solo estaba en Today) — mismo
+      patrón: fallback instantáneo + sustitución en segundo plano si la IA responde.
+- [ ] Pendiente confirmar si la función `nutrition-insight` está realmente desplegada
+      en Supabase (`supabase functions deploy nutrition-insight`) — si no lo está, todo
+      sigue funcionando pero siempre en modo fallback (reglas fijas), sin romper nada.
+
 ## Estimación genérica del día 1 — diseñado, en construcción (2026-08-01)
 Problema: el Goal Engine exige mínimo 3 registros repartidos en 5+ días antes
 de dar cualquier veredicto real — correcto, pero significa que un usuario
@@ -240,9 +256,33 @@ dar la primera estimación:
 - [ ] `fetchMealTemplates` existe pero no hay UI en Nutrition para *usar* una plantilla guardada (solo se puede guardar, no elegir una ya guardada al añadir una comida)
 - [ ] Tendencia semanal de peso por ejercicio (existía en la versión web) no está construida en esta versión de Training
 
+## Recovery Engine — v1 construido (2026-08-01)
+- [x] Motor genérico en `lib/engine/recovery-engine.ts` (lógica pura, sin
+      Supabase/UI, mismo patrón que Goal Engine): recibe una lista de
+      sesiones (fecha, grupos musculares entrenados, dificultad, dolor
+      articular) y calcula un `readiness` general (fresh/moderate/fatigued)
+      más un desglose interno por grupo muscular (`byMuscleGroup`), pensado
+      para el User Model / futuro Recommendation Engine, no se muestra hoy.
+      Recuperación esperada por grupo = días según dificultad reportada
+      (facil/normal/dificil/limite → 1-4 días), +1 si hubo dolor articular
+      en esa sesión. El readiness general es el peor estado entre los
+      grupos entrenados recientemente.
+- [x] `fetchRecentSessionFeedback` nuevo en `lib/data/workout.ts`: conecta
+      por primera vez el feedback que ya se guardaba en `meso_sessions`
+      (difficulty/joint_pain/joint) — antes no lo leía nada. Junta sesiones
+      completadas de los últimos 14 días (across todos los mesociclos, no
+      solo el activo) con qué grupos musculares tocó cada una (vía
+      `session_index % days_per_week`, igual que `getSessionDef`).
+- [x] Tarjeta temporal en Today mostrando solo el `readiness` general
+      (marcada visualmente "PROVISIONAL") — el desglose por grupo muscular
+      es solo interno por ahora, no tiene UI.
+- [ ] Pendiente encima de esto: diseño definitivo de la tarjeta (hoy es
+      provisional), mapear dolor articular a grupos musculares concretos
+      (hoy el dolor se asocia a los grupos de esa sesión, no a la
+      articulación en sí), y que el futuro Recommendation Engine lea el
+      readiness para ajustar recomendaciones.
+
 ## Piezas grandes que faltan (del documento de producto)
-- [ ] **Insight Engine real (IA)** — el resumen corto de Nutrition (`nutritionCoachLine`) es reglas fijas, no IA todavía
-- [ ] **Recovery Engine** — hoy solo se registra feedback de sesión, no se usa para nada automatizado
 - [ ] **Recommendation Engine** de verdad (junta Workout+Nutrition+Goal+Recovery+Insight)
 - [~] **Today** — pantalla principal: card de objetivo hecha (`GoalSummaryCard`, solo vistazo, tapas a Progress para editar/detalle), resumen y widget de Nutrición y widget "Up Next" de Entrenamiento ya existían. Falta: FAB centrado persistente en las 4 pestañas
 - [~] **Perfil** (pantalla aparte, no pestaña) — `app/profile.tsx` ya existe con la sección de Identity (age/sex/height/starting weight). Falta: email, cambiar contraseña/email, cerrar sesión, mover aquí el toggle de tema (hoy en Progress)
