@@ -13,7 +13,7 @@
 
 import { ActivityLevel, Experience, GoalType, Sex } from '../../features/profile/engine/types';
 import { GoalEvaluation, suggestPhaseForGoal } from './goal-engine';
-import { RecoveryEvaluation } from './recovery-engine';
+import { RecoveryEvaluation, RecoveryStatus } from './recovery-engine';
 import { Level, MacroGoals, Phase } from './types';
 
 // ─── INPUT ────────────────────────────────────────────────────────────────
@@ -178,11 +178,17 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
     );
   } else {
     // Sin edad/altura/peso no hay base real para BMR — fallback conservador
-    // en vez de inventar. Mismo valor que DEFAULT_GOALS ya usaba en
-    // nutrition-engine.ts, para no romper lo que ya existía.
-    kcal = 2900;
+    // en vez de inventar (mismo punto de partida que DEFAULT_GOALS ya usaba
+    // en nutrition-engine.ts), pero el objetivo sigue aplicando su ajuste:
+    // sin esto, el resultado era idéntico pasara lo que pasara el objetivo,
+    // que es justo lo que no debe pasar en un motor que decide por objetivo.
+    kcal = Math.round(2900 + KCAL_ADJUSTMENT[goalType]);
     proteinG = 155;
-    explanations.push('Calorías: sin edad/altura/peso suficientes para BMR real — se usa el valor genérico fijo de siempre.');
+    explanations.push(
+      `Calorías: sin edad/altura/peso suficientes para BMR real — se parte de un genérico (2900 kcal) ajustado ${
+        KCAL_ADJUSTMENT[goalType] >= 0 ? '+' : ''
+      }${KCAL_ADJUSTMENT[goalType]} kcal según objetivo "${goalType}". Rellena tu perfil para un cálculo real.`
+    );
   }
 
   const fatG = Math.round((kcal * 0.25) / 9);
@@ -304,4 +310,63 @@ export function validateStrategyPlan(plan: StrategyPlan, ctx: StrategyPlannerCon
   };
 
   return { plan: adjustedPlan, conflicts };
+}
+
+// ─── DAILY FOCUS ──────────────────────────────────────────────────────────
+// Paso 6 (Daily planning) del pipeline, versión mínima: mira recuperación +
+// entreno + nutrición a la vez (solo el Recommendation Engine puede hacer
+// esto) y elige UNA cosa que destacar hoy, no una lista de todo. Pura,
+// reglas fijas — igual que el resto, sin IA todavía.
+
+export type DailyFocus = {
+  headline: string;
+  icon: 'battery-charging' | 'activity' | 'zap';
+  // 'nutrition' es la única donde el caller puede sustituir `headline` por
+  // la frase real del Insight Engine (con IA) si la tiene — este motor no
+  // sabe nada de eso, solo decide que hoy toca hablar de comida.
+  domain: 'recovery' | 'training' | 'nutrition';
+};
+
+export type DailyFocusInput = {
+  readiness: RecoveryStatus | null;
+  hasSessionToday: boolean;
+  sessionLabel: string | null;
+  kcalPct: number; // status.pct.kcal del día (0-1+, ver nutrition-engine.ts)
+  proteinPct: number; // status.pct.protein_g del día
+};
+
+export function computeDailyFocus(input: DailyFocusInput): DailyFocus {
+  const { readiness, hasSessionToday, sessionLabel, kcalPct, proteinPct } = input;
+
+  // 1. Fatigado + entreno pendiente — la seguridad va antes que el plan.
+  if (readiness === 'fatigued' && hasSessionToday) {
+    return {
+      headline: `Estás fatigado — antes de ${sessionLabel}, considera bajar la intensidad o descansar hoy.`,
+      icon: 'battery-charging',
+      domain: 'recovery',
+    };
+  }
+
+  // 2. Entreno pendiente (sin fatiga) — es lo más importante del día.
+  if (hasSessionToday) {
+    return {
+      headline: `Hoy toca ${sessionLabel} — es lo más importante que tienes por delante.`,
+      icon: 'activity',
+      domain: 'training',
+    };
+  }
+
+  // 3. Sin entreno hoy — el foco pasa a nutrición.
+  if (proteinPct < 0.5) {
+    return { headline: 'Vas bajo de proteína hoy — una comida con más proteína te acerca al objetivo.', icon: 'zap', domain: 'nutrition' };
+  }
+  if (kcalPct >= 1.1) {
+    return { headline: 'Ya has superado tu objetivo de calorías de hoy.', icon: 'zap', domain: 'nutrition' };
+  }
+  if (kcalPct < 0.5) {
+    return { headline: 'Llevas pocas calorías registradas hoy — no te olvides de comer bien.', icon: 'zap', domain: 'nutrition' };
+  }
+
+  // 4. Nada urgente — sigue siendo sobre comida, no un genérico vacío.
+  return { headline: 'Vas bien encaminado con tus macros de hoy — sigue así.', icon: 'zap', domain: 'nutrition' };
 }

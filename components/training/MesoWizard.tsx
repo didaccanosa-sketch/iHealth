@@ -73,6 +73,7 @@ export function MesoWizard({
   const [dayIdx, setDayIdx] = useState(0);
   const [exGroup, setExGroup] = useState<MuscleGroup | null>(null);
   const [query, setQuery] = useState('');
+  const [showRecommendInfo, setShowRecommendInfo] = useState(false);
 
   function goToDays() {
     if (form.days.length !== form.days_per_week) {
@@ -352,8 +353,32 @@ export function MesoWizard({
       {step === 3 && (
         <FadeIn trigger={step}>
           <Card>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: 10 }}>What I think of this routine</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>What I think of this routine</Text>
+              {initial?.generatedFrom === 'recommendation' && (
+                <Pressable onPress={() => setShowRecommendInfo((v) => !v)} hitSlop={8}>
+                  <Feather name="info" size={15} color={colors.text2} />
+                </Pressable>
+              )}
+            </View>
             <Text style={{ color: colors.text2, fontSize: 13, lineHeight: 20 }}>{warnings}</Text>
+            {showRecommendInfo && initial?.generatedFrom === 'recommendation' && (
+              <View style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, marginTop: 10 }}>
+                {(initial.recommendationExplanations || []).map((line, i) => (
+                  <Text
+                    key={i}
+                    style={{
+                      color: colors.text2,
+                      fontSize: 11,
+                      lineHeight: 16,
+                      marginBottom: i === (initial.recommendationExplanations || []).length - 1 ? 0 : 6,
+                    }}
+                  >
+                    • {line}
+                  </Text>
+                ))}
+              </View>
+            )}
           </Card>
           {form.days.map((d, dIdx) => (
             <Card key={dIdx}>

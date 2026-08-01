@@ -14,6 +14,7 @@ import { fetchProfile } from '../../lib/data/profile';
 import { fetchMesocycles, fetchMesocycleDetail, fetchRecentSessionFeedback } from '../../lib/data/workout';
 import { getSessionDef } from '../../lib/engine/workout-engine';
 import { evaluateRecovery, RecoveryEvaluation } from '../../lib/engine/recovery-engine';
+import { computeDailyFocus } from '../../lib/engine/recommendation-engine';
 import { Meal, MacroGoals } from '../../lib/engine/types';
 import { QuestionCard } from '../../features/profile/QuestionCard';
 import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
@@ -108,11 +109,20 @@ export default function TodayScreen() {
 
   const initial = (name || session?.user.email || '?').trim().charAt(0).toUpperCase();
 
-  const summaryLine = (() => {
-    const parts: string[] = [nutritionLine || nutritionCoachLine(status)];
-    if (nextSession) parts.push(`Next up: ${nextSession.dayLabel} (week ${nextSession.week}).`);
-    return parts.join(' ');
-  })();
+  // Daily focus (Recommendation Engine, paso 5): una sola cosa priorizada,
+  // no todo junto — ver docs/RECOMMENDATION_ENGINE.md. Reglas fijas por
+  // ahora, sin IA.
+  const dailyFocus = computeDailyFocus({
+    readiness: recovery?.readiness ?? null,
+    hasSessionToday: hasActiveMeso && !!nextSession,
+    sessionLabel: nextSession?.dayLabel ?? null,
+    kcalPct: status.pct.kcal,
+    proteinPct: status.pct.protein_g,
+  });
+  // Cuando el foco de hoy es nutrición, se usa la frase real del Insight
+  // Engine (con IA, ya cacheada) en vez de la genérica del motor — no se
+  // pierde ese trabajo, solo se decide CUÁNDO tiene sentido mostrarlo.
+  const dailyFocusHeadline = dailyFocus.domain === 'nutrition' ? nutritionLine || nutritionCoachLine(status) : dailyFocus.headline;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -138,9 +148,12 @@ export default function TodayScreen() {
         ) : (
           <>
             <Card>
+              <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+                TODAY'S FOCUS
+              </Text>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-                <Feather name="zap" size={16} color={colors.accent} style={{ marginTop: 2 }} />
-                <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, flex: 1 }}>{summaryLine}</Text>
+                <Feather name={dailyFocus.icon} size={16} color={colors.accent} style={{ marginTop: 2 }} />
+                <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, flex: 1 }}>{dailyFocusHeadline}</Text>
               </View>
             </Card>
 

@@ -32,6 +32,23 @@ const SETTINGS_ROWS = [
   { icon: 'log-out' as const, label: 'Log out' },
 ];
 
+function InfoRow({
+  label,
+  value,
+  colors,
+}: {
+  label: string;
+  value: string;
+  colors: ReturnType<typeof useAppTheme>['colors'];
+}) {
+  return (
+    <View style={{ marginBottom: spacing.md }}>
+      <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 4 }}>{label}</Text>
+      <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>{value}</Text>
+    </View>
+  );
+}
+
 function FieldRow({
   label,
   value,
@@ -89,6 +106,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -102,11 +120,7 @@ export default function ProfileScreen() {
       .then((m) => {
         if (cancelled) return;
         setModel(m);
-        setFirstName(m.identity.firstName.value ?? '');
-        setLastName(m.identity.lastName.value ?? '');
-        setAge(m.identity.age.value != null ? String(m.identity.age.value) : '');
-        setHeightCm(m.identity.heightCm.value != null ? String(m.identity.heightCm.value) : '');
-        setStartingWeightKg(m.identity.startingWeightKg.value != null ? String(m.identity.startingWeightKg.value) : '');
+        resetFieldsFromModel(m);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -122,6 +136,20 @@ export default function ProfileScreen() {
     },
     [model]
   );
+
+  const resetFieldsFromModel = useCallback((m: UserModelData) => {
+    setFirstName(m.identity.firstName.value ?? '');
+    setLastName(m.identity.lastName.value ?? '');
+    setAge(m.identity.age.value != null ? String(m.identity.age.value) : '');
+    setHeightCm(m.identity.heightCm.value != null ? String(m.identity.heightCm.value) : '');
+    setStartingWeightKg(m.identity.startingWeightKg.value != null ? String(m.identity.startingWeightKg.value) : '');
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    if (model) resetFieldsFromModel(model);
+    setSaved(false);
+    setEditing(false);
+  }, [model, resetFieldsFromModel]);
 
   const save = useCallback(async () => {
     if (!model) return;
@@ -152,6 +180,7 @@ export default function ProfileScreen() {
       });
       setModel(next);
       setSaved(true);
+      setEditing(false);
     } catch {
       // se queda como estaba, el usuario puede reintentar con Save
     }
@@ -191,18 +220,40 @@ export default function ProfileScreen() {
         </View>
 
         <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
-          <View
-            style={{
-              width: 84,
-              height: 84,
-              borderRadius: 42,
-              backgroundColor: colors.surface2,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: spacing.sm,
-            }}
-          >
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 30 }}>{initial}</Text>
+          <View style={{ position: 'relative', marginBottom: spacing.sm }}>
+            <View
+              style={{
+                width: 84,
+                height: 84,
+                borderRadius: 42,
+                backgroundColor: colors.surface2,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 30 }}>{initial}</Text>
+            </View>
+            {!editing && (
+              <Pressable
+                onPress={() => setEditing(true)}
+                hitSlop={8}
+                style={{
+                  position: 'absolute',
+                  bottom: -2,
+                  right: -2,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: colors.accent,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 2,
+                  borderColor: colors.bg,
+                }}
+              >
+                <Feather name="edit-2" size={13} color={colors.accentText} />
+              </Pressable>
+            )}
           </View>
           <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700' }}>{displayName || 'Your name'}</Text>
           <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2 }}>{session?.user.email}</Text>
@@ -213,66 +264,108 @@ export default function ProfileScreen() {
             ABOUT YOU
           </Text>
 
-          <FieldRow label="First name" value={firstName} onChangeText={setFirstName} colors={colors} inputStyle={inputStyle} placeholder="e.g. Didac" />
-          <FieldRow label="Last name" value={lastName} onChangeText={setLastName} colors={colors} inputStyle={inputStyle} placeholder="e.g. Cañosa" />
-          <FieldRow label="Age" value={age} onChangeText={setAge} colors={colors} inputStyle={inputStyle} placeholder="e.g. 28" keyboardType="number-pad" />
+          {editing ? (
+            <>
+              <FieldRow label="First name" value={firstName} onChangeText={setFirstName} colors={colors} inputStyle={inputStyle} placeholder="e.g. Didac" />
+              <FieldRow label="Last name" value={lastName} onChangeText={setLastName} colors={colors} inputStyle={inputStyle} placeholder="e.g. Cañosa" />
+              <FieldRow label="Age" value={age} onChangeText={setAge} colors={colors} inputStyle={inputStyle} placeholder="e.g. 28" keyboardType="number-pad" />
 
-          <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Sex</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
-            {SEX_OPTIONS.map((opt) => {
-              const active = model.identity.sex.value === opt.value;
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => chooseSex(opt.value)}
-                  style={{
-                    flex: 1,
-                    backgroundColor: active ? colors.accent : colors.surface2,
-                    borderRadius: radius.md,
-                    paddingVertical: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: active ? colors.accentText : colors.text, fontWeight: '600', fontSize: 13 }}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+              <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 6 }}>Sex</Text>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
+                {SEX_OPTIONS.map((opt) => {
+                  const active = model.identity.sex.value === opt.value;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => chooseSex(opt.value)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: active ? colors.accent : colors.surface2,
+                        borderRadius: radius.md,
+                        paddingVertical: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: active ? colors.accentText : colors.text, fontWeight: '600', fontSize: 13 }}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
-          <FieldRow label="Height (cm)" value={heightCm} onChangeText={setHeightCm} colors={colors} inputStyle={inputStyle} placeholder="e.g. 178" keyboardType="number-pad" />
-          <View style={{ marginBottom: 0 }}>
-            <FieldRow
-              label="Starting weight (kg)"
-              value={startingWeightKg}
-              onChangeText={setStartingWeightKg}
-              colors={colors}
-              inputStyle={inputStyle}
-              placeholder="e.g. 82"
-              keyboardType="decimal-pad"
-            />
-          </View>
+              <FieldRow label="Height (cm)" value={heightCm} onChangeText={setHeightCm} colors={colors} inputStyle={inputStyle} placeholder="e.g. 178" keyboardType="number-pad" />
+              <View style={{ marginBottom: 0 }}>
+                <FieldRow
+                  label="Starting weight (kg)"
+                  value={startingWeightKg}
+                  onChangeText={setStartingWeightKg}
+                  colors={colors}
+                  inputStyle={inputStyle}
+                  placeholder="e.g. 82"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <InfoRow label="Name" value={displayName || '—'} colors={colors} />
+              <InfoRow label="Age" value={model.identity.age.value != null ? String(model.identity.age.value) : '—'} colors={colors} />
+              <InfoRow
+                label="Sex"
+                value={SEX_OPTIONS.find((o) => o.value === model.identity.sex.value)?.label ?? '—'}
+                colors={colors}
+              />
+              <InfoRow
+                label="Height"
+                value={model.identity.heightCm.value != null ? `${model.identity.heightCm.value} cm` : '—'}
+                colors={colors}
+              />
+              <InfoRow
+                label="Starting weight"
+                value={model.identity.startingWeightKg.value != null ? `${model.identity.startingWeightKg.value} kg` : '—'}
+                colors={colors}
+              />
+            </>
+          )}
         </Card>
 
-        <Pressable
-          onPress={save}
-          disabled={saving}
-          style={{
-            backgroundColor: colors.accent,
-            borderRadius: radius.md,
-            padding: 14,
-            alignItems: 'center',
-            opacity: saving ? 0.6 : 1,
-          }}
-        >
-          {saving ? (
-            <ActivityIndicator color={colors.accentText} />
-          ) : (
-            <Text style={{ color: colors.accentText, fontWeight: '700' }}>Save</Text>
-          )}
-        </Pressable>
-        {saved && (
+        {editing && (
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Pressable
+              onPress={cancelEdit}
+              disabled={saving}
+              style={{
+                flex: 1,
+                backgroundColor: colors.surface2,
+                borderRadius: radius.md,
+                padding: 14,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={save}
+              disabled={saving}
+              style={{
+                flex: 2,
+                backgroundColor: colors.accent,
+                borderRadius: radius.md,
+                padding: 14,
+                alignItems: 'center',
+                opacity: saving ? 0.6 : 1,
+              }}
+            >
+              {saving ? (
+                <ActivityIndicator color={colors.accentText} />
+              ) : (
+                <Text style={{ color: colors.accentText, fontWeight: '700' }}>Save</Text>
+              )}
+            </Pressable>
+          </View>
+        )}
+        {saved && !editing && (
           <Text style={{ color: colors.success, fontSize: 13, textAlign: 'center', marginTop: spacing.sm }}>Saved</Text>
         )}
 

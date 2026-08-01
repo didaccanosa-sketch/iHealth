@@ -69,6 +69,7 @@ export default function NutritionScreen() {
   const [recommendedPlan, setRecommendedPlan] = useState<StrategyPlan | null>(null);
   const [recommendModalOpen, setRecommendModalOpen] = useState(false);
   const [applyingRecommendation, setApplyingRecommendation] = useState(false);
+  const [showRecommendInfo, setShowRecommendInfo] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -297,6 +298,7 @@ export default function NutritionScreen() {
       setMacroGoals(recommendedPlan.nutrition);
       setRecommendModalOpen(false);
       setRecommendedPlan(null);
+      setShowRecommendInfo(false);
     } catch (e: any) {
       setError(e.message || 'No se pudo guardar el objetivo, inténtalo de nuevo.');
     }
@@ -574,10 +576,25 @@ export default function NutritionScreen() {
               paddingBottom: spacing.xl,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 4 }}>Objetivo propuesto</Text>
-            <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>Objetivo propuesto</Text>
+              <Pressable onPress={() => setShowRecommendInfo((v) => !v)} hitSlop={8}>
+                <Feather name="info" size={15} color={colors.text2} />
+              </Pressable>
+            </View>
+            <Text style={{ color: colors.text2, fontSize: 12, marginBottom: showRecommendInfo ? 8 : 16 }}>
               Calculado por el motor a partir de tu objetivo actual — revisa antes de aplicar.
             </Text>
+
+            {showRecommendInfo && recommendedPlan && (
+              <View style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, marginBottom: 16 }}>
+                {recommendedPlan.explanations.map((line, i) => (
+                  <Text key={i} style={{ color: colors.text2, fontSize: 11, lineHeight: 16, marginBottom: i === recommendedPlan.explanations.length - 1 ? 0 : 6 }}>
+                    • {line}
+                  </Text>
+                ))}
+              </View>
+            )}
 
             {recommendedPlan && (
               <View style={{ marginBottom: 20 }}>
@@ -610,6 +627,7 @@ export default function NutritionScreen() {
                 onPress={() => {
                   setRecommendModalOpen(false);
                   setRecommendedPlan(null);
+                  setShowRecommendInfo(false);
                 }}
                 disabled={applyingRecommendation}
                 style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: radius.md, padding: 12, alignItems: 'center' }}

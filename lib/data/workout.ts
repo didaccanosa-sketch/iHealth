@@ -191,8 +191,9 @@ export type NewMesoInput = {
   days_per_week: number;
   days: { label: string; exercises: { name: string; muscle_group: MuscleGroup; sets: number; reps: string }[] }[];
   // Metadata de origen, solo para enriquecer el feedback del wizard — nunca se persiste en `mesocycles`.
-  generatedFrom?: 'focus';
+  generatedFrom?: 'focus' | 'recommendation';
   focusPriority?: MuscleGroup[];
+  recommendationExplanations?: string[]; // texto plano del Strategy Planner, ver docs/RECOMMENDATION_ENGINE.md
 };
 
 export async function createMesocycle(userId: string, input: NewMesoInput): Promise<string> {

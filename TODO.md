@@ -69,6 +69,9 @@
       Today se actualice solo), edad/sexo/altura/peso inicial, y una
       tarjeta "Settings" con Email/Password/Theme/Log out como
       placeholders "Coming soon" (ninguno funcional todavía).
+- [x] "About you" pasa a ser de solo lectura por defecto — hay que tocar
+      el botón de lápiz junto al avatar para entrar en modo edición (con
+      Cancel/Save explícitos); antes se podía editar directamente sin querer.
 - [x] **Log out funcional (2026-08-01)** — `supabase.auth.signOut()` con
       confirmación antes (`window.confirm` en web, `Alert.alert` en
       nativo). Arreglado de paso el motivo original: sin logout real, tras
@@ -298,6 +301,15 @@ De lo que no depende de nada más a lo que depende de otras piezas:
      enseña la propuesta en una tarjeta propia (mismo patrón que el modal
      de comidas) y Workout muestra el aviso de "sin objetivo"/error dentro
      de la propia pantalla, no en un pop-up del navegador.
+   - [x] **Arreglado (2026-08-01): el genérico sin perfil ignoraba el
+     objetivo del todo** — sin edad/altura/peso rellenados, salían siempre
+     las mismas calorías cambiaras lo que cambiaras el objetivo. Ahora el
+     genérico también se ajusta según objetivo (solo deja de ser
+     "measured" de verdad, no de ignorar el objetivo).
+   - [x] **Botón de info en ambas propuestas (2026-08-01)** — icono "i" en
+     la tarjeta de Nutrition y en la pantalla de revisión de Workout,
+     despliega el porqué de cada número (`StrategyPlan.explanations`),
+     nunca oculto por defecto pero tampoco intrusivo.
    - [x] **Workout (2026-08-01)** — `StrategyPlan.training` ahora incluye
      también `level` (de la experiencia del usuario, `lib/engine/recommendation-engine.ts`).
      Nueva opción "Recommend for me" en el selector de creación de rutina
@@ -307,9 +319,20 @@ De lo que no depende de nada más a lo que depende de otras piezas:
      (`buildFocusSplit`, sin prioridad de grupo muscular por ahora) y entra
      directo a la pantalla de revisión del asistente — nada se crea sin
      confirmar. Si no hay objetivo fijado, avisa en vez de fallar.
-5. **Daily planning** — de la estrategia confirmada a "el plan de hoy"
-   (entreno de hoy, macros de hoy, foco de hoy) para el Home. Depende de
-   que el paso 4 ya esté guardando algo real.
+5. [x] **Daily planning, versión mínima (2026-08-01)** —
+   `computeDailyFocus` (`lib/engine/recommendation-engine.ts`): mira
+   recuperación + entreno + nutrición a la vez y elige UNA cosa que
+   destacar hoy (no una lista de todo), con prioridad fatiga > entreno
+   pendiente > nutrición. Sustituye la tarjeta de Today que antes solo
+   concatenaba la frase de nutrición + próxima sesión sin priorizar nada.
+   Cuando el foco resulta ser nutrición, se sigue usando la frase real del
+   Insight Engine (con IA) en vez de una genérica — no se pierde ese
+   trabajo, solo se decide cuándo tiene sentido mostrarlo. Sin IA en la
+   lógica de qué destacar (reglas fijas, como el resto del motor).
+   - [ ] Pendiente: el resto del rediseño de Today que se vio en una
+     imagen de referencia (agua, sueño, checklist con anillos, próxima
+     comida con foto, tendencia de peso como tarjeta propia) — aparte,
+     depende de piezas que no existen todavía (tracking de agua/sueño).
 6. **Capa de IA** — interpretación de objetivo en texto libre (Goal Chat)
    + funciones de redacción de cada propuesta (mismo patrón que
    `analyze-meal`). Se añade encima de un motor que ya funciona en
