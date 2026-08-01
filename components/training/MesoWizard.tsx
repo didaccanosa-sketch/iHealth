@@ -6,7 +6,7 @@ import { FadeIn } from '../FadeIn';
 import { useAppTheme } from '../../lib/theme-context';
 import { radius, spacing } from '../../constants/theme';
 import { MuscleGroup, Level, Phase } from '../../lib/engine/types';
-import { MUSCLE_GROUPS, analyzeSplit } from '../../lib/engine/workout-engine';
+import { MUSCLE_GROUPS, analyzeSplit, explainFocusChoices } from '../../lib/engine/workout-engine';
 import { EXERCISE_DB } from '../../lib/engine/exercise-db';
 import { NewMesoInput } from '../../lib/data/workout';
 
@@ -142,7 +142,15 @@ export function MesoWizard({
     return (q ? list.filter((n) => n.toLowerCase().includes(q)) : list).slice(0, 8);
   }, [exGroup, query]);
 
-  const warnings = useMemo(() => (step === 3 ? analyzeSplit(form.days as any, form.phase, form.level) : ''), [step, form]);
+  const warnings = useMemo(() => {
+    if (step !== 3) return '';
+    const general = analyzeSplit(form.days as any, form.phase, form.level);
+    if (initial?.generatedFrom === 'focus') {
+      const explanation = explainFocusChoices(form.days as any, initial.focusPriority || []);
+      return [explanation, general].filter(Boolean).join(' ');
+    }
+    return general;
+  }, [step, form, initial]);
 
   const day = form.days[dayIdx];
 

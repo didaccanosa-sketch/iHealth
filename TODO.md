@@ -32,10 +32,11 @@
   módulo en concreto (ej. el "sugerir fase según objetivo" ya diseñado para Training).
 - **Today los presenta juntos** aunque por debajo sean datos independientes — la sensación de
   "un solo objetivo" es una capa visual, no una restricción de arquitectura.
-- **Idea de monetización futura** (no construir todavía, solo dejar anotado): una versión de pago
-  que coordina Dieta+Entrenamiento+Recuperación juntos de forma continua — el Recommendation
-  Engine completo del documento de producto. El motor manual actual (mesociclos, wizard) sigue
-  siendo la base "gratis" de control total, no se sustituye.
+- **Actualizado (2026-08-01): el Recommendation Engine será el único camino**, no una capa de pago
+  aparte (la idea de monetización se aparca, no se descarta — no es una decisión de ahora mismo).
+  El wizard manual no desaparece: pasa a ser el paso de "editar antes de confirmar" dentro del
+  propio flujo del motor (nunca se aplica nada sin que el usuario lo revise). Diseño completo en
+  `docs/RECOMMENDATION_ENGINE.md`.
 
 ## User Model Engine — v1 construido (2026-08-01)
 - [x] Tabla `user_model` (jsonb, status unknown/confirmed), motor en
@@ -193,39 +194,204 @@ dar la primera estimación:
       onboarding a medias (¿se puede saltar y completar luego desde Today,
       o es obligatorio terminarlo?).
 
+## Recommendation Engine — diseño (2026-08-01), pendiente de construir
+Diseño pensado en chat, repartido en **2 chats separados** para construirlo:
+- **Chat "Workout Engine"** — 2 partes (contenedor combinado + qué pasa
+  con las Piezas A-F ya en cola, ver más abajo)
+- **Chat "Recommendation Engine"** — 1 parte (el motor orquestador en sí,
+  con sus 3 puntos de entrada)
+
+### Qué es
+El único orquestador que puede leer más de un motor de dominio a la vez
+(Goal, Recovery, Nutrition, Workout, Insight) — los motores de dominio
+siguen sin conocerse entre sí, solo lo conoce él. Mismo patrón técnico que
+Insight Engine: función pura en `lib/engine/` que calcula la prescripción
+de forma determinista + una llamada a IA solo para redactarla, con
+fallback a reglas fijas si falla. La IA nunca decide, solo redacta.
+
+### Decisiones ya tomadas
+- **Revisión antes de aplicar**: nunca se guarda nada automáticamente (ni
+  objetivo de macros ni mesociclo) — el usuario ve la propuesta y
+  confirma. El wizard manual no es un camino aparte: es este mismo paso
+  de revisión/edición.
+- **Se unifican 3 piezas sueltas del TODO** en este único motor, con
+  distintas interfaces encima: "Chat con IA para crear el mesociclo",
+  "Sugerencia de tipo de entrenamiento por IA" y "Sugerencia de comidas
+  por IA" dejan de ser features separadas.
+- **Sustituye la pieza "Estimación genérica del día 1"** (no convive con
+  ella): en vez de que el Goal Engine adivine un ritmo por perfil
+  demográfico (`estimateFitnessBaseline`), usa el déficit/superávit
+  calórico y la estructura de entreno que el propio Recommendation Engine
+  acaba de prescribir para proyectar el primer ritmo — sigue sin ser
+  "measured", pero está mejor fundado que un genérico puro.
+- **3 puntos de entrada**: Onboarding (primera propuesta de dieta +
+  mesociclo de golpe), Nutrition (recalcular objetivo de macros bajo
+  demanda), Workout (proponer/recalcular plan de entreno).
+- **Diseño completo cerrado (2026-08-01)** — ver `docs/RECOMMENDATION_ENGINE.md`:
+  pipeline interno de 6 pasos (interpretar objetivo → construir contexto
+  → Strategy Planner → delegar a los motores → validar coherencia entre
+  ellos → plan del día). El motor decide el "qué" (frecuencia, calorías,
+  macros, prioridades de volumen); el split día a día lo sigue decidiendo
+  el Workout Engine, no sube al Strategy Planner (para no duplicar el
+  algoritmo de énfasis que ya funciona). Edición manual puntual no
+  cambia nada a futuro; un patrón repetido de ediciones sí se guarda como
+  preferencia (`Adherence` del User Model) y realimenta al Strategy
+  Planner. Adaptación dinámica limitada a como mucho un replanteo por
+  semana, y siempre explicando por qué si ajusta algo para resolver un
+  conflicto de Validación.
+
+### Orden de construcción (2026-08-01)
+De lo que no depende de nada más a lo que depende de otras piezas:
+1. **Strategy Planner puro** — sin Supabase ni IA. Recibe Goal Engine +
+   User Model, devuelve el set completo de targets (calorías, macros,
+   fibra, comidas/día, frecuencia de entreno, prioridades de volumen,
+   cardio/semana, prioridad de recuperación, objetivo de sueño, objetivo
+   de pasos). No necesita que exista tracking de sueño/pasos todavía —
+   eso hace falta para *medir* adherencia al target, no para proponerlo.
+2. **Validation** — reglas de coherencia sobre el output del paso 1 (ej.
+   principiante + volumen avanzado, entreno + calorías incompatibles).
+   También puro, se apoya directo en el paso 1.
+3. **Persistencia del objetivo de macros** — tabla/campo por usuario que
+   falta en Nutrition (hoy es un valor fijo). Bloquea que la entrada
+   Nutrition tenga dónde guardar lo que proponga el motor.
+4. **Delegación real** — conectar el output del paso 1 con Workout Engine
+   (crear mesociclo) y Nutrition Engine (ya con el paso 3 hecho). El
+   motor empieza a ser usable de verdad para las entradas Nutrition y
+   Workout, pasando por el wizard/edición como paso de revisión.
+5. **Daily planning** — de la estrategia confirmada a "el plan de hoy"
+   (entreno de hoy, macros de hoy, foco de hoy) para el Home. Depende de
+   que el paso 4 ya esté guardando algo real.
+6. **Capa de IA** — interpretación de objetivo en texto libre (Goal Chat)
+   + funciones de redacción de cada propuesta (mismo patrón que
+   `analyze-meal`). Se añade encima de un motor que ya funciona en
+   determinista, no bloquea nada de lo anterior.
+7. **Tracking de agua/sueño/pasos** — hace falta antes de que esos
+   targets del paso 1 tengan un valor real con el que compararse.
+8. **Adaptación dinámica** — replanteo automático limitado (máx. 1/semana),
+   necesita datos reales de adherencia fluyendo (workout/comidas →
+   `Adherence` del User Model, ya pendiente aparte) más lo del paso 7.
+9. **Cardio y Funcional como motores reales** — amplía la Delegación del
+   paso 4 a más modalidades; no bloquea nada de lo anterior, puede ir en
+   paralelo cuando toque.
+
+Los pasos 1 y 2 son los únicos sin ninguna dependencia — punto de partida.
+  conflicto de Validación.
+
+### Entrada Nutrition — falta la pieza base, no es un rediseño
+Hoy `DEFAULT_GOALS` (`lib/engine/nutrition-engine.ts`) es una constante
+fija (2900 kcal / 155g proteína) importada tal cual en `nutrition.tsx` e
+`index.tsx` — **no hay objetivo de macros persistido por usuario en
+ningún sitio**, ni tabla ni campo. Hace falta:
+- [ ] Tabla/campo nuevo para el objetivo de macros por usuario (con
+      fecha, no solo el valor actual — para poder correlacionar después
+      cambios de objetivo con cambios de ritmo en Progress)
+- [ ] Sustituir `DEFAULT_GOALS` en los dos sitios que lo usan por "cargar
+      el objetivo del usuario, caer al genérico solo si no existe aún"
+- [ ] Pendiente de decidir: ¿se puede editar el objetivo a mano, o solo
+      recalcularlo pidiéndoselo al motor? (equivalente al "empezar desde
+      cero" manual que ya existe en Workout)
+
+### Entrada Workout — posible cambio grande de estructura (Plan B)
+Hoy Training es 3 modos independientes (Hipertrofia/Fuerza construido,
+Cardio y Funcional "coming soon", cada uno su propio motor/tablas). Idea:
+en vez de que el usuario elija un modo de un menú fijo, el objetivo decide
+qué mezcla de modalidades tiene sentido — plan combinado real (ej. 3 días
+de meso + 2 de cardio en la misma semana), no solo un enrutado más listo
+hacia uno de los tres. Se elige esto sobre la opción más conservadora
+porque **no hay usuarios reales todavía** — no hay coste de migración por
+cambiar la estructura ahora.
+- [x] **Contenedor `training_programs` construido (2026-08-01)**, envoltorio
+      delgado — schema nuevo en `supabase/schema.sql` (**pendiente: ejecutar
+      contra Supabase**, como con las demás tablas nuevas — no se ha
+      desplegado desde aquí). `mesocycles.program_id` (nullable, `on delete
+      cascade`). `createMesocycle` crea programa + mesocíclo 1:1.
+      `startMesocycle` mueve la exclusividad a `training_programs.status =
+      'active'` (mantiene también el chequeo antiguo sobre `mesocycles.started`
+      por si hay mesociclos de antes de `program_id`, sin programa que los
+      envuelva). `advanceMesocycle`/`endMesocycleEarly` reflejan `finished` en
+      el programa (libera el hueco de exclusividad). `deleteMesocycle` borra
+      desde el programa cuando existe (cascada limpia). Se rellena solo con
+      un mesociclo por ahora — Cardio y Funcional entran en el mismo
+      contenedor cuando se construyan, sin rehacer la estructura otra vez.
+- [ ] Qué se rompe de lo ya construido, a repasar cuando se diseñe la mezcla
+      real de modalidades: `fetchRecentSessionFeedback` del Recovery Engine
+      (asume `session_index % days_per_week` de un único mesociclo), el
+      widget "Up Next" de Today, Progress — hoy no se han tocado, siguen
+      leyendo `mesocycles` directamente y funcionan igual que antes.
+- [x] **Decidido (2026-08-01)**: las Piezas A-F se construyen tal cual están,
+      sin esperar al contenedor — ninguna toca la relación mesociclo↔programa.
+      Al revisar, A/B/C ya estaban construidas y D se completó en esta misma
+      pasada (ver sección "En cola" más abajo).
+- [x] **`ProgramScreen` construida (2026-08-01)**: nueva pantalla
+      (`components/training/ProgramScreen.tsx`), primera vista de la pestaña
+      Training (sustituye a `TrainingTypeMenu`, ya borrada). Muestra el
+      programa activo (resumen + progreso, tap para continuar) arriba, y
+      debajo un único bloque "Start something" con tres filas siempre
+      visibles — New routine / Cardio / Functional (coming soon) — en vez de
+      un botón que aparece/desaparece más una fila suelta de Cardio. "New
+      routine" se desactiva con nota explicativa si ya hay un programa activo;
+      Cardio siempre queda accesible, esté o no en marcha un mesociclo (esto
+      era importante no romperlo). Aclarado en la propia conversación: esto
+      es orden visual, no facilita nada al Recommendation Engine — ese se
+      conecta dentro de `CreateMesoChooser` (opción "Build it with AI chat"),
+      no aquí.
+- [x] **Orden decidido (2026-08-01, corregido)**: el contenedor
+      `training_program` (envoltorio delgado, ver arriba) se puede construir
+      independientemente — no necesita esperar a nada de Cardio. Se descartó
+      la idea de un "motor de prescripción de Cardio" aparte: decidir cuánto
+      cardio hacer según objetivo + días de fuerza + `readiness` de Recovery
+      lee 4 dominios a la vez, que es exactamente la definición de
+      `docs/SYSTEM_ARCHITECTURE.md` de lo que le toca al Recommendation
+      Engine, no a un motor de dominio nuevo (los motores de dominio no se
+      conocen entre sí). Orden real: **contenedor → Recommendation Engine**.
+      La lógica de frecuencia de cardio queda documentada abajo, dentro de la
+      entrada Workout del Recommendation Engine, en vez de como motor suelto.
+
+#### Lógica de frecuencia de Cardio (para cuando se construya la entrada Workout)
+Sesiones/semana sugeridas por tipo de objetivo (conservador, banda de
+duración genérica 20-40 min, sin inventar precisión que no hay — mismo
+principio que `confidence: 'generic'` del Goal Engine):
+- `lose_fat`: 3-4/semana, sobre todo ritmo suave
+- `stamina`: 3-4/semana, mezclando suave + 1 sesión más exigente (el único
+  objetivo donde cardio es protagonista directo)
+- `maintain`: 2/semana, ritmo suave
+- `gain_muscle`: 1-2/semana, cortas y suaves (no competir con recuperación/superávit)
+- `strength` / `mobility`: 0-1/semana, opcional, solo salud general
+
+Si `readiness` (Recovery Engine) es `fatigued`, se baja un escalón o se
+sugiere descanso en vez de empujar una sesión dura. No cierra el hueco de
+`stamina` en el Goal Engine (`GOAL_METRICS.stamina = 'unsupported'`) — eso
+necesita una métrica de progreso medible aparte, es un problema distinto a
+prescribir esfuerzo.
+
 ## En cola (próximo) — Review de la última actualización (Cardio + Plantillas)
 
-- [ ] **PIEZA A — Rehacer el flujo de creación con plantilla (bug de pregunta repetida)**
-      Ahora mismo, al usar cualquier plantilla (catálogo fijo, propia, o Focused split),
-      se pasa por el wizard normal desde el paso 1 — que vuelve a preguntar días/semana,
-      fase, nivel, duración, aunque ya se hayan elegido en el TemplatePicker. Arreglo:
-        - El TemplatePicker (las 3 pestañas) recoge fase + nivel + duración del meso
-          en la misma pantalla, junto con la elección de plantilla/split — no en una
-          pantalla aparte después
-        - En "Focused split": quitar la restricción de 4-7 días fijos — campo libre,
-          el algoritmo ya soporta cualquier número
-        - El wizard, cuando viene de una plantilla (`initial` ya viene relleno), entra
-          **directo a la pantalla de revisión** (lo que hoy es el paso 3), no vuelve a
-          empezar por el paso 1 — así solo se pregunta una vez todo
-        - El camino "Start from scratch" (manual) se queda exactamente igual que ahora
+> **Decisión (2026-08-01):** estas piezas se construyen tal cual están,
+> sin esperar al contenedor `training_program` — ninguna toca la
+> relación mesociclo↔programa, así que no hay riesgo de rehacer trabajo
+> después. El contenedor en sí queda pendiente de diseño aparte (ver
+> "Recommendation Engine — diseño" más arriba).
 
-- [ ] **PIEZA B — Reordenar ejercicios en la revisión**
-      En la pantalla de revisión (antes de crear el meso), poder subir/bajar cada
-      ejercicio de posición dentro de su día — botones arriba/abajo, no hace falta
-      drag-and-drop completo
+- [x] **PIEZA A — Rehacer el flujo de creación con plantilla (bug de pregunta repetida)** —
+      confirmado ya construido (2026-08-01): TemplatePicker recoge fase/nivel/duración en
+      la misma pantalla, Focused split ya no está limitado a 4-7 días, y el wizard entra
+      directo al paso 3 cuando viene de una plantilla.
 
-- [ ] **PIEZA C — Transiciones entre pantallas**
-      Los cambios de pantalla (wizard, menús, etc.) son instantáneos/secos ahora mismo.
-      Añadir una transición suave (fade o slide) al navegar, en vez de un corte directo
+- [x] **PIEZA B — Reordenar ejercicios en la revisión** — confirmado ya construido
+      (botones ↑/↓ por ejercicio en el paso 3 del wizard).
 
-- [ ] **PIEZA D — Feedback explicativo para splits generados por el algoritmo**
-      Cuando el split viene del generador de énfasis, el feedback debería explicar el
-      *porqué* de las decisiones (ej. "le diste prioridad a pecho, así que aparece 2
-      veces por semana; lo emparejé con glúteo el segundo día para repartir mejor el
-      resto"), y añadir recomendaciones proactivas (core, recuperación/descarga) en vez
-      de solo avisar cuando falta algo
+- [x] **PIEZA C — Transiciones entre pantallas** — confirmado ya construido
+      (`components/FadeIn.tsx`, enchufado en `training.tsx`, `TemplatePicker` y `MesoWizard`).
 
-- [ ] **PIEZA E — Rediseño visual del Draft Preview**
+- [x] **PIEZA D — Feedback explicativo para splits generados por el algoritmo** (2026-08-01)
+      Nueva `explainFocusChoices` en `workout-engine.ts`: cuando el split viene del
+      generador de énfasis (Focused split), explica qué grupo se priorizó, cuántas veces
+      aparece y con qué se emparejó cada día, más una nota proactiva de recuperación/deload.
+      `NewMesoInput` gana `generatedFrom`/`focusPriority` (solo metadata de UI, no se
+      persiste) para que el wizard sepa cuándo mostrar esta explicación en el paso 3.
+
+- [ ] **PIEZA E — Rediseño visual del Draft Preview** — pendiente de propuesta de diseño
+      concreta antes de construir (ver tarea abierta).
       Ahora mismo es texto plano ("parece escrito con Word"). Necesita más jerarquía
       visual: iconos por grupo muscular, tarjetas por día mejor diferenciadas, quizás
       una mini línea de tiempo semanal — pendiente de propuesta de diseño concreta
@@ -233,7 +399,8 @@ dar la primera estimación:
 - [ ] **PIEZA F — Pulido visual de Cardio**
       Funciona bien pero se ve "convencional". Pendiente de propuesta de diseño
       concreta (tipografía más grande en el número hero, iconos por tipo de actividad,
-      gráfico con más personalidad, tarjetas de sesión con color según actividad...)
+      gráfico con más personalidad, tarjetas de sesión con color según actividad...) —
+      pendiente de propuesta de diseño concreta antes de construir (ver tarea abierta).
 
 
 - [ ] **Chat con IA para crear el mesociclo** — al pulsar "Build it with AI chat" en el chooser
@@ -283,7 +450,7 @@ dar la primera estimación:
       readiness para ajustar recomendaciones.
 
 ## Piezas grandes que faltan (del documento de producto)
-- [ ] **Recommendation Engine** de verdad (junta Workout+Nutrition+Goal+Recovery+Insight)
+- [ ] **Recommendation Engine** de verdad (junta Workout+Nutrition+Goal+Recovery+Insight) — diseño ya hecho, ver sección dedicada arriba; se construye repartido en 2 chats ("Workout Engine" + "Recommendation Engine")
 - [~] **Today** — pantalla principal: card de objetivo hecha (`GoalSummaryCard`, solo vistazo, tapas a Progress para editar/detalle), resumen y widget de Nutrición y widget "Up Next" de Entrenamiento ya existían. Falta: FAB centrado persistente en las 4 pestañas
 - [~] **Perfil** (pantalla aparte, no pestaña) — `app/profile.tsx` ya existe con la sección de Identity (age/sex/height/starting weight). Falta: email, cambiar contraseña/email, cerrar sesión, mover aquí el toggle de tema (hoy en Progress)
 - [ ] **Agua y sueño** — no se registran todavía

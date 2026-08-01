@@ -190,13 +190,26 @@ export type NewMesoInput = {
   duration_weeks: number;
   days_per_week: number;
   days: { label: string; exercises: { name: string; muscle_group: MuscleGroup; sets: number; reps: string }[] }[];
+  // Metadata de origen, solo para enriquecer el feedback del wizard — nunca se persiste en `mesocycles`.
+  generatedFrom?: 'focus';
+  focusPriority?: MuscleGroup[];
 };
 
 export async function createMesocycle(userId: string, input: NewMesoInput): Promise<string> {
+  // Cada mesociclo se crea envuelto en su propio programa (1:1 por ahora) —
+  // ver comentario en schema.sql sobre `training_programs`.
+  const { data: program, error: errProgram } = await supabase
+    .from('training_programs')
+    .insert({ user_id: userId, status: 'draft' })
+    .select('id')
+    .single();
+  if (errProgram) throw errProgram;
+
   const { data: meso, error } = await supabase
     .from('mesocycles')
     .insert({
       user_id: userId,
+      program_id: program.id,
       level: input.level,
       phase: input.phase,
       duration_weeks: input.duration_weeks,
@@ -235,20 +248,59 @@ export async function createMesocycle(userId: string, input: NewMesoInput): Prom
   return mesoId;
 }
 
-// Marca el meso como "empezado" — solo si no hay otro ya en curso para este usuario
+// Marca el meso como "empezado" — solo si no hay otro programa ya activo para
+// este usuario. La exclusividad vive en `training_programs.status`, no en
+// `mesocycles.started`; se mantiene también el chequeo antiguo por si algún
+// mesociclo se creó antes de que existiera `program_id` (sin programa que lo
+// envuelva todavía).
 export async function startMesocycle(mesocycleId: string, userId: string) {
-  const { data: active, error: errCheck } = await supabase
+  const { data: mesoRow, error: errMeso } = await supabase
+    .from('mesocycles')
+    .select('program_id')
+    .eq('id', mesocycleId)
+    .single();
+  if (errMeso) throw errMeso;
+  const programId = mesoRow?.program_id as string | null;
+
+  const { data: activeMesos, error: errCheckMeso } = await supabase
     .from('mesocycles')
     .select('id')
     .eq('user_id', userId)
     .eq('started', true)
     .eq('finished', false)
     .neq('id', mesocycleId);
-  if (errCheck) throw errCheck;
-  if (active && active.length) {
+  if (errCheckMeso) throw errCheckMeso;
+
+  let activePrograms: { id: string }[] | null = null;
+  if (programId) {
+    const { data, error: errCheckProgram } = await supabase
+      .from('training_programs')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .neq('id', programId);
+    if (errCheckProgram) throw errCheckProgram;
+    activePrograms = data;
+  }
+
+  if ((activeMesos && activeMesos.length) || (activePrograms && activePrograms.length)) {
     throw new Error('You already have a mesocycle in progress. Finish or end it before starting a new one.');
   }
+
   const { error } = await supabase.from('mesocycles').update({ started: true }).eq('id', mesocycleId);
+  if (error) throw error;
+  if (programId) {
+    const { error: errProgram } = await supabase.from('training_programs').update({ status: 'active' }).eq('id', programId);
+    if (errProgram) throw errProgram;
+  }
+}
+
+// Best-effort: si el mesociclo tiene programa, refleja el estado "finished" en él también —
+// libera el hueco de exclusividad (`status = 'active'`) para poder empezar otro.
+async function finishProgramForMesocycle(mesocycleId: string) {
+  const { data: mesoRow } = await supabase.from('mesocycles').select('program_id').eq('id', mesocycleId).single();
+  if (!mesoRow?.program_id) return;
+  const { error } = await supabase.from('training_programs').update({ status: 'finished' }).eq('id', mesoRow.program_id);
   if (error) throw error;
 }
 
@@ -369,14 +421,33 @@ export async function completeSession(
 export async function advanceMesocycle(mesocycleId: string, newCurrentIndex: number, finished: boolean) {
   const { error } = await supabase.from('mesocycles').update({ current_index: newCurrentIndex, finished }).eq('id', mesocycleId);
   if (error) throw error;
+  if (finished) await finishProgramForMesocycle(mesocycleId);
 }
 
 export async function endMesocycleEarly(mesocycleId: string) {
   const { error } = await supabase.from('mesocycles').update({ finished: true }).eq('id', mesocycleId);
   if (error) throw error;
+  await finishProgramForMesocycle(mesocycleId);
 }
 
+// Si el mesociclo tiene programa, se borra el programa (cascada a mesociclo +
+// días/ejercicios/sesiones vía `on delete cascade`) — así no queda un
+// programa huérfano. Los mesociclos creados antes de `program_id` siguen
+// borrándose directamente, como antes.
 export async function deleteMesocycle(mesocycleId: string, userId: string) {
+  const { data: mesoRow } = await supabase
+    .from('mesocycles')
+    .select('program_id')
+    .eq('id', mesocycleId)
+    .eq('user_id', userId)
+    .single();
+
+  if (mesoRow?.program_id) {
+    const { error } = await supabase.from('training_programs').delete().eq('id', mesoRow.program_id).eq('user_id', userId);
+    if (error) throw error;
+    return;
+  }
+
   const { error } = await supabase.from('mesocycles').delete().eq('id', mesocycleId).eq('user_id', userId);
   if (error) throw error;
 }

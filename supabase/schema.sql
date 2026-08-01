@@ -134,6 +134,25 @@ alter table meal_templates enable row level security;
 drop policy if exists "meal_templates: all own" on meal_templates;
 create policy "meal_templates: all own" on meal_templates for all using (auth.uid() = user_id);
 
+-- ─── WORKOUT ENGINE: contenedor de programa ──────────────────────────────────
+-- Envoltorio delgado por encima del mesociclo. Hoy es 1:1 con un mesociclo
+-- (createMesocycle crea uno de cada), pero es el sitio donde en el futuro
+-- vivirá la mezcla de modalidades (meso + cardio + funcional) en la misma
+-- semana, sin tener que rehacer esta tabla. La exclusividad "solo un
+-- programa activo a la vez" vive aquí (status = 'active'), no en
+-- `mesocycles.started` — ver `startMesocycle` en lib/data/workout.ts.
+create table if not exists training_programs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  status text check (status in ('draft','active','finished')) not null default 'draft',
+  name text,
+  created_at timestamptz default now()
+);
+alter table training_programs enable row level security;
+drop policy if exists "training_programs: all own" on training_programs;
+create policy "training_programs: all own" on training_programs for all using (auth.uid() = user_id);
+grant select, insert, update, delete on training_programs to authenticated, anon;
+
 -- ─── WORKOUT ENGINE: mesociclos ──────────────────────────────────────────────
 create table if not exists mesocycles (
   id uuid primary key default gen_random_uuid(),
@@ -149,6 +168,7 @@ create table if not exists mesocycles (
   created_at timestamptz default now()
 );
 alter table mesocycles add column if not exists started boolean not null default false;
+alter table mesocycles add column if not exists program_id uuid references training_programs(id) on delete cascade;
 
 alter table mesocycles enable row level security;
 drop policy if exists "mesocycles: all own" on mesocycles;

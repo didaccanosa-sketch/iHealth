@@ -232,6 +232,37 @@ export function analyzeSplit(days: MesoDay[], phase: Phase, level: Level): strin
   return parts.join(' ');
 }
 
+// Feedback explicativo para splits que salen del generador de énfasis (Focused split):
+// por qué un grupo priorizado aparece más de una vez y con qué se emparejó, más una
+// nota proactiva de recuperación — a diferencia de analyzeSplit, que solo avisa cuando
+// falta algo.
+export function explainFocusChoices(days: MesoDay[], priority: MuscleGroup[]): string {
+  if (!priority.length) return '';
+  const label = (g: MuscleGroup) => MUSCLE_GROUPS.find((m) => m.id === g)?.label || g;
+
+  const parts: string[] = [];
+  priority.forEach((g) => {
+    const dayIdxs = days.map((d, i) => (d.exercises.some((e) => e.muscle_group === g) ? i : -1)).filter((i) => i !== -1);
+    if (!dayIdxs.length) return;
+
+    const freq = dayIdxs.length;
+    const intro = `You gave priority to ${label(g)}, so it shows up ${freq} time${freq === 1 ? '' : 's'} this week`;
+
+    const pairings = dayIdxs
+      .map((i) => {
+        const others = Array.from(new Set(days[i].exercises.map((e) => e.muscle_group))).filter((m) => m !== g);
+        return others.length ? `${days[i].label} alongside ${others.map(label).join(', ')}` : null;
+      })
+      .filter((s): s is string => !!s);
+
+    parts.push(pairings.length ? `${intro} — paired with ${pairings.join('; ')} to spread the rest of the volume out.` : `${intro}.`);
+  });
+
+  if (!parts.length) return '';
+  parts.push('Sets already ease off automatically in the deload week at the end, so recovery is built in — no need to plan around it.');
+  return parts.join(' ');
+}
+
 // PR (Personal Record) — fórmula de Epley para estimar el 1RM
 export function estimate1RM(kg: number, reps: number): number {
   return kg * (1 + reps / 30);

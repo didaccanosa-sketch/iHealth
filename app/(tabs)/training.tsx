@@ -8,7 +8,7 @@ import { useAuth } from '../../lib/auth-context';
 import { MesoMenu } from '../../components/training/MesoMenu';
 import { MesoWizard } from '../../components/training/MesoWizard';
 import { SessionView, SessionFeedback } from '../../components/training/SessionView';
-import { TrainingTypeMenu } from '../../components/training/TrainingTypeMenu';
+import { ProgramScreen } from '../../components/training/ProgramScreen';
 import { CreateMesoChooser } from '../../components/training/CreateMesoChooser';
 import { DraftPreview } from '../../components/training/DraftPreview';
 import { TemplatePicker } from '../../components/training/TemplatePicker';
@@ -36,14 +36,14 @@ import {
 import { Mesocycle, MesoSession } from '../../lib/engine/types';
 import { totalSessions, estimate1RM } from '../../lib/engine/workout-engine';
 
-type View = 'typeMenu' | 'menu' | 'createChoice' | 'templatePicker' | 'wizard' | 'session' | 'cardio';
+type View = 'program' | 'menu' | 'createChoice' | 'templatePicker' | 'wizard' | 'session' | 'cardio';
 
 export default function TrainingScreen() {
   const { colors } = useAppTheme();
   const { session } = useAuth();
   const userId = session?.user.id as string;
 
-  const [view, setView] = useState<View>('typeMenu');
+  const [view, setView] = useState<View>('program');
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [mesos, setMesos] = useState<MesoSummary[]>([]);
 
@@ -74,7 +74,7 @@ export default function TrainingScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (view === 'menu') loadMenu();
+      if (view === 'menu' || view === 'program') loadMenu();
     }, [view, loadMenu])
   );
 
@@ -262,11 +262,21 @@ export default function TrainingScreen() {
   return (
     <Screen title="Training">
       <FadeIn trigger={view}>
-      {view === 'typeMenu' && (
-        <TrainingTypeMenu onSelectHypertrophy={() => setView('menu')} onSelectCardio={() => setView('cardio')} />
+      {view === 'program' && menuError && (
+        <Text style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{menuError}</Text>
+      )}
+      {view === 'program' && (
+        <ProgramScreen
+          loading={loadingMenu}
+          mesos={mesos}
+          onContinue={openMeso}
+          onCreate={() => setView('createChoice')}
+          onHistory={() => setView('menu')}
+          onCardio={() => setView('cardio')}
+        />
       )}
 
-      {view === 'cardio' && <CardioScreen onBack={() => setView('typeMenu')} />}
+      {view === 'cardio' && <CardioScreen onBack={() => setView('program')} />}
 
       {view === 'menu' && menuError && (
         <Text style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{menuError}</Text>
@@ -278,7 +288,7 @@ export default function TrainingScreen() {
           onSelect={openMeso}
           onCreate={() => setView('createChoice')}
           onDelete={handleDeleteMeso}
-          onBack={() => setView('typeMenu')}
+          onBack={() => setView('program')}
         />
       )}
 

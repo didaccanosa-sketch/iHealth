@@ -135,7 +135,15 @@ export function TemplatePicker({
 
   function generateFocus() {
     if (!days) return;
-    onPick({ level, phase, duration_weeks: durationWeeks, days_per_week: days, days: buildFocusSplit(days, focusGroups) });
+    onPick({
+      level,
+      phase,
+      duration_weeks: durationWeeks,
+      days_per_week: days,
+      days: buildFocusSplit(days, focusGroups),
+      generatedFrom: 'focus',
+      focusPriority: focusGroups,
+    });
   }
 
   if (daysLoading) {

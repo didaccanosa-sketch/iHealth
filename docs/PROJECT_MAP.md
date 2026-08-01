@@ -33,7 +33,7 @@ the whole tree "just in case" — come back here instead.
 ## components/
 
 - `AuthScreen.tsx`, `Card.tsx`, `FadeIn.tsx`, `MacroBar.tsx`, `Screen.tsx` — shared primitives.
-- `training/` — training-specific screens/widgets: `CardioScreen`, `CreateMesoChooser`, `DraftPreview`, `MesoMenu`, `MesoWizard`, `SessionView`, `TemplatePicker`, `TrainingTypeMenu`.
+- `training/` — training-specific screens/widgets: `CardioScreen`, `CreateMesoChooser`, `DraftPreview`, `MesoMenu`, `MesoWizard`, `ProgramScreen`, `SessionView`, `TemplatePicker`.
 
 ## lib/engine/ (pure logic — this is where "the engine" lives today)
 

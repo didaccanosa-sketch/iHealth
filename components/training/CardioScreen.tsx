@@ -115,7 +115,7 @@ export function CardioScreen({ onBack }: { onBack: () => void }) {
     <View>
       <Pressable onPress={onBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surface2, alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 14, marginBottom: 14 }}>
         <Feather name="chevron-left" size={16} color={colors.text} />
-        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>Training type</Text>
+        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>Program</Text>
       </Pressable>
 
       <Card variant="glass">
