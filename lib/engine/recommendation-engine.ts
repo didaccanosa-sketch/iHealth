@@ -12,7 +12,7 @@
 // usuario (eso es Adaptación dinámica, paso 8 del orden de construcción).
 
 import { ActivityLevel, Experience, GoalType, Sex } from '../../features/profile/engine/types';
-import { GoalEvaluation, suggestPhaseForGoal } from './goal-engine';
+import { GoalEvaluation, suggestPhaseForGoal, GOAL_METRICS } from './goal-engine';
 import { RecoveryEvaluation, RecoveryStatus } from './recovery-engine';
 import { Level, MacroGoals, Phase } from './types';
 
@@ -337,6 +337,67 @@ export function validateStrategyPlan(plan: StrategyPlan, ctx: StrategyPlannerCon
   return { plan: adjustedPlan, conflicts: { nutrition: nutritionConflicts, training: trainingConflicts } };
 }
 
+// ─── ADHERENCE ADJUSTMENT ───────────────────────────────────────────────────
+// Paso 8 del TODO ("Adaptación dinámica"): cuando el Goal Engine dice que
+// vas por detrás o fuera de ritmo respecto a tu objetivo de peso, las
+// calorías se reajustan solas — decisión ya tomada, sin pantalla de edición
+// manual para esto (ver TODO.md / docs/SIMPLIFIED_VISION.md). Pura,
+// determinista, sin IA. Solo nutrición, solo objetivo de peso (única
+// métrica conectada al Goal Engine hoy). El límite de "no más de una vez
+// por semana" y el guardado viven en lib/data/recommendation.ts — este
+// motor no sabe de fechas ni de Supabase.
+
+const ADHERENCE_KCAL_STEP = 150; // ajuste conservador, no agresivo
+const ADHERENCE_KCAL_STEP_OFF_TRACK = 300; // el doble si vas claramente fuera de ritmo
+
+export type AdherenceAdjustment = {
+  plan: StrategyPlan;
+  adjusted: boolean;
+  reason: string | null;
+};
+
+export function computeAdherenceAdjustment(plan: StrategyPlan, ctx: StrategyPlannerContext): AdherenceAdjustment {
+  const { type: goalType, evaluation } = ctx.goal;
+  const status = evaluation?.status;
+
+  if (GOAL_METRICS[goalType] !== 'weight' || (status !== 'behind' && status !== 'off_track')) {
+    return { plan, adjusted: false, reason: null };
+  }
+
+  // Dirección del ajuste: en un objetivo de perder grasa, ir "behind"
+  // significa que se pierde más despacio de lo esperado -> más déficit. En
+  // uno de ganar músculo/fuerza, "behind" significa que se gana más
+  // despacio -> más superávit. 'maintain' no tiene una dirección clara de
+  // "fallar", así que no se ajusta.
+  const direction: -1 | 1 | 0 = goalType === 'lose_fat' ? -1 : goalType === 'gain_muscle' || goalType === 'strength' ? 1 : 0;
+  if (direction === 0) {
+    return { plan, adjusted: false, reason: null };
+  }
+
+  const step = status === 'off_track' ? ADHERENCE_KCAL_STEP_OFF_TRACK : ADHERENCE_KCAL_STEP;
+  const newKcal = Math.max(MIN_SAFE_KCAL, plan.nutrition.kcal + direction * step);
+  if (newKcal === plan.nutrition.kcal) {
+    return { plan, adjusted: false, reason: null };
+  }
+
+  const { fat_g, carbs_g } = recomputeFatAndCarbs(newKcal, plan.nutrition.protein_g);
+  const verb = direction === -1 ? 'bajamos' : 'subimos';
+  const reason =
+    status === 'off_track'
+      ? `Tu progreso real va bastante fuera de ritmo respecto a tu objetivo, así que ${verb} tus calorías a ${newKcal} kcal.`
+      : `Tu progreso real va un poco por detrás de tu objetivo, así que ${verb} ligeramente tus calorías a ${newKcal} kcal.`;
+
+  return {
+    plan: {
+      ...plan,
+      nutrition: { ...plan.nutrition, kcal: newKcal, fat_g, carbs_g },
+      explanations: { ...plan.explanations, nutrition: [...plan.explanations.nutrition, reason] },
+    },
+    adjusted: true,
+    reason,
+  };
+}
+
 // ─── DAILY FOCUS ──────────────────────────────────────────────────────────
 // Paso 6 (Daily planning) del pipeline, versión mínima: mira recuperación +
 // entreno + nutrición a la vez (solo el Recommendation Engine puede hacer
@@ -434,3 +495,19 @@ export function computeDailyFocus(input: DailyFocusInput): DailyFocus {
   // 7. Nada urgente — sigue siendo sobre comida, no un genérico vacío.
   return { headline: 'Vas bien encaminado con tus macros de hoy — sigue así.', icon: 'zap', domain: 'nutrition' };
 }
+
+// ─── STATS FOCUS ──────────────────────────────────────────────────────────
+// Qué tarjeta secundaria (además del objetivo, que siempre se ve) tiene más
+// sentido destacar en la franja de stats de la pantalla única, según el
+// tipo de objetivo — determinista, sin IA (ver docs/SIMPLIFIED_VISION.md).
+// null = ningún dominio destaca especialmente para ese objetivo todavía
+// (ej. mobility, sin motor propio hoy) — se enseña solo tracking.
+
+export const STATS_FOCUS_BY_GOAL: Record<GoalType, 'nutrition' | 'training' | null> = {
+  lose_fat: 'nutrition',
+  gain_muscle: 'nutrition',
+  maintain: 'nutrition',
+  strength: 'training',
+  stamina: 'training',
+  mobility: null,
+};

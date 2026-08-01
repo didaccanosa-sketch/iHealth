@@ -1,27 +1,27 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { View, Text, Pressable, ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import { Card } from '../../components/Card';
 import { useAppTheme } from '../../lib/theme-context';
 import { useAuth } from '../../lib/auth-context';
-import { spacing, radius } from '../../constants/theme';
-import { fetchMealsForDate, fetchMealsForDateRange, fetchCurrentMacroGoal, getNutritionInsight } from '../../lib/data/nutrition';
-import { computeMacroStatus, DEFAULT_GOALS, nutritionCoachLine } from '../../lib/engine/nutrition-engine';
-import { groupMealsByDate } from '../../lib/engine/nutritionInsight';
+import { spacing } from '../../constants/theme';
 import { fetchProfile } from '../../lib/data/profile';
-import { fetchMesocycles, fetchMesocycleDetail, fetchRecentSessionFeedback } from '../../lib/data/workout';
-import { getSessionDef } from '../../lib/engine/workout-engine';
-import { evaluateRecovery, RecoveryEvaluation } from '../../lib/engine/recovery-engine';
-import { computeDailyFocus, GENERIC_DAILY_STEPS_TARGET, GENERIC_DAILY_WATER_ML_TARGET } from '../../lib/engine/recommendation-engine';
-import { fetchTodayTracking, TodayTracking } from '../../lib/data/tracking';
-import { Meal, MacroGoals } from '../../lib/engine/types';
-import { QuestionCard } from '../../features/profile/QuestionCard';
 import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
 import { TrackingCard } from '../../components/tracking/TrackingCard';
+import { useGoalEvaluation } from '../../components/goal/useGoalEvaluation';
+import { getStrategyRecommendationWithAdjustment } from '../../lib/data/recommendation';
+import { StrategyPlan, STATS_FOCUS_BY_GOAL } from '../../lib/engine/recommendation-engine';
+import { sendChatMessage } from '../../lib/data/chat';
 
-type NextSession = { dayLabel: string; week: number; isDeload: boolean } | null;
+// Pantalla única (ver docs/SIMPLIFIED_VISION.md): cabecera + stats + chat.
+// El chat (v1) responde preguntas y ya registra peso/comida con una
+// interpretación básica — ver lib/data/chat.ts y
+// supabase/functions/chat-assistant. Entreno todavía no se puede registrar
+// desde aquí (se avisa en el propio chat).
+
+type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -30,77 +30,61 @@ function greeting(): string {
   return 'Good evening';
 }
 
-function todayLabel(): string {
-  return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-}
-
 export default function TodayScreen() {
   const { colors } = useAppTheme();
   const { session } = useAuth();
   const router = useRouter();
   const userId = session?.user.id as string;
 
-  const [loading, setLoading] = useState(true);
   const [name, setName] = useState<string | null>(null);
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [nextSession, setNextSession] = useState<NextSession>(null);
-  const [hasActiveMeso, setHasActiveMeso] = useState(false);
-  const [nutritionLine, setNutritionLine] = useState<string | null>(null);
-  const [recovery, setRecovery] = useState<RecoveryEvaluation | null>(null);
-  const [macroGoals, setMacroGoals] = useState<MacroGoals>(DEFAULT_GOALS);
-  const [tracking, setTracking] = useState<TodayTracking | null>(null);
+  const [plan, setPlan] = useState<StrategyPlan | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  const { goalType, refresh: refreshGoal } = useGoalEvaluation(userId);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [profile, todaysMeals, mesos, recentFeedback, savedGoal, todayTracking] = await Promise.all([
-        fetchProfile(userId).catch(() => null),
-        fetchMealsForDate(),
-        fetchMesocycles(userId).catch(() => []),
-        fetchRecentSessionFeedback(userId).catch(() => []),
-        fetchCurrentMacroGoal(userId).catch(() => null),
-        fetchTodayTracking(userId).catch(() => null),
-      ]);
-      setName(profile?.name || null);
-      setMeals(todaysMeals);
-      setRecovery(evaluateRecovery(recentFeedback));
-      setTracking(todayTracking);
-      const goals = savedGoal ?? DEFAULT_GOALS;
-      setMacroGoals(goals);
-
-      // Frase de reglas fijas al instante, para que Today no se quede en
-      // blanco mientras llega (o no) la del Insight Engine con IA.
-      const fallbackLine = nutritionCoachLine(computeMacroStatus(todaysMeals, goals));
-      setNutritionLine(fallbackLine);
-
-      const active = mesos.find((m) => m.started && !m.finished);
-      if (active) {
-        setHasActiveMeso(true);
-        const detail = await fetchMesocycleDetail(active.id);
-        const def = getSessionDef(detail, detail.current_index);
-        setNextSession({ dayLabel: def.dayLabel, week: def.week, isDeload: def.isDeload });
-      } else {
-        setHasActiveMeso(false);
-        setNextSession(null);
-      }
-
-      // Insight con IA en segundo plano — no bloquea la pantalla. Si tarda,
-      // falla o la función aún no está desplegada, se queda el fallback.
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const threeDaysAgoStr = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      fetchMealsForDateRange(threeDaysAgoStr, todayStr)
-        .then((recentMeals) =>
-          getNutritionInsight(userId, todaysMeals, groupMealsByDate(recentMeals), goals, fallbackLine)
-        )
-        .then((result) => setNutritionLine(result.line))
-        .catch(() => {
-          // ya tenemos el fallback puesto, no hace falta hacer nada más
-        });
-    } catch {
-      // si algo falla, se muestran los estados vacíos, sin romper la pantalla
+    const profile = await fetchProfile(userId).catch(() => null);
+    setName(profile?.name || null);
+    const result = await getStrategyRecommendationWithAdjustment(userId).catch(() => null);
+    setPlan(result?.plan ?? null);
+    // Bucle de adherencia (ver docs/SIMPLIFIED_VISION.md): si el motor acaba
+    // de reajustar las calorías solo, se avisa como mensaje del asistente en
+    // vez de en silencio — nunca dos veces la misma razón en la conversación.
+    if (result?.adjustmentReason) {
+      setMessages((prev) =>
+        prev.some((m) => m.text === result.adjustmentReason)
+          ? prev
+          : [...prev, { id: `adj-${Date.now()}`, role: 'assistant', text: result.adjustmentReason as string }]
+      );
     }
-    setLoading(false);
   }, [userId]);
+
+  const handleSend = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setDraft('');
+    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', text }]);
+    setSending(true);
+    try {
+      const result = await sendChatMessage(userId, text);
+      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', text: result.reply }]);
+      // Un registro (peso/comida) puede haber cambiado el objetivo/plan —
+      // refrescamos la franja de stats para que se note sin recargar.
+      load();
+      refreshGoal();
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { id: `a-${Date.now()}`, role: 'assistant', text: 'No he podido responder — inténtalo de nuevo en un momento.' },
+      ]);
+    } finally {
+      setSending(false);
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    }
+  }, [draft, sending, userId, load, refreshGoal]);
 
   useFocusEffect(
     useCallback(() => {
@@ -108,136 +92,160 @@ export default function TodayScreen() {
     }, [load])
   );
 
-  const status = computeMacroStatus(meals, macroGoals);
-  const nutritionWord = status.pct.kcal >= 0.9 && status.pct.kcal <= 1.1 ? 'On track' : status.pct.kcal < 0.5 ? 'Just getting started' : status.pct.kcal > 1.15 ? 'Over target' : 'Almost there';
-  const nutritionColor = nutritionWord === 'On track' ? colors.success : nutritionWord === 'Over target' ? colors.warning : colors.accent;
-
   const initial = (name || session?.user.email || '?').trim().charAt(0).toUpperCase();
 
-  // Daily focus (Recommendation Engine, paso 5): una sola cosa priorizada,
-  // no todo junto — ver docs/RECOMMENDATION_ENGINE.md. Reglas fijas por
-  // ahora, sin IA.
-  const dailyFocus = computeDailyFocus({
-    readiness: recovery?.readiness ?? null,
-    hasSessionToday: hasActiveMeso && !!nextSession,
-    sessionLabel: nextSession?.dayLabel ?? null,
-    kcalPct: status.pct.kcal,
-    proteinPct: status.pct.protein_g,
-    sleepHoursLastNight: tracking?.sleepHours ?? null,
-    waterMlToday: tracking?.waterMl ?? null,
-    waterMlTarget: GENERIC_DAILY_WATER_ML_TARGET,
-    stepsToday: tracking?.steps ?? null,
-    stepsTarget: GENERIC_DAILY_STEPS_TARGET,
-  });
-  // Cuando el foco de hoy es nutrición, se usa la frase real del Insight
-  // Engine (con IA, ya cacheada) en vez de la genérica del motor — no se
-  // pierde ese trabajo, solo se decide CUÁNDO tiene sentido mostrarlo.
-  const dailyFocusHeadline = dailyFocus.domain === 'nutrition' ? nutritionLine || nutritionCoachLine(status) : dailyFocus.headline;
+  // Personalización de la franja de stats: qué tarjeta secundaria destacar
+  // además del objetivo, según el tipo de objetivo — determinista, sin IA
+  // (ver STATS_FOCUS_BY_GOAL en lib/engine/recommendation-engine.ts y
+  // docs/SIMPLIFIED_VISION.md).
+  const focusDomain = goalType ? STATS_FOCUS_BY_GOAL[goalType] : null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl * 2 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.lg }}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: spacing.lg,
+            paddingTop: spacing.md,
+          }}
+        >
           <View>
-            <Text style={{ color: colors.text2, fontSize: 14 }}>{greeting()},</Text>
-            <Text style={{ color: colors.text, fontSize: 28, fontWeight: '700', letterSpacing: -0.5 }}>{name || 'there'}</Text>
-            <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2, textTransform: 'capitalize' }}>{todayLabel()}</Text>
+            <Text style={{ color: colors.text2, fontSize: 13 }}>{greeting()},</Text>
+            <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700', letterSpacing: -0.5 }}>
+              {name || 'there'}
+            </Text>
           </View>
           <Pressable
             onPress={() => router.push('/profile')}
-            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: colors.surface2,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>{initial}</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{initial}</Text>
           </Pressable>
         </View>
 
-        <GoalSummaryCard />
+        {/* STATS — objetivo siempre visible; la tarjeta secundaria y el
+            tracking se personalizan según el tipo de objetivo (ver
+            STATS_FOCUS_BY_GOAL). La conversación podrá afinar esto más
+            adelante, cuando exista el chat (ver docs/SIMPLIFIED_VISION.md). */}
+        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md }}>
+          <GoalSummaryCard />
 
-        {loading ? (
-          <ActivityIndicator color={colors.accent} style={{ marginTop: 12 }} />
-        ) : (
-          <>
+          {plan && focusDomain === 'nutrition' && (
             <Card>
-              <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
-                TODAY'S FOCUS
+              <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>
+                TODAY'S TARGET
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-                <Feather name={dailyFocus.icon} size={16} color={colors.accent} style={{ marginTop: 2 }} />
-                <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, flex: 1 }}>{dailyFocusHeadline}</Text>
-              </View>
+              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>
+                {plan.nutrition.kcal} kcal · {plan.nutrition.protein_g}g protein
+              </Text>
+              <Text style={{ color: colors.text2, fontSize: 12, marginTop: 2 }}>{plan.nutrition.mealsPerDay} meals/day</Text>
             </Card>
+          )}
 
-            {recovery && (
-              <Card>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 }}>RECOVERY</Text>
-                  <View style={{ backgroundColor: colors.surface2, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
-                    <Text style={{ color: colors.text2, fontSize: 10, fontWeight: '700' }}>PROVISIONAL</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-                  <Feather
-                    name="battery-charging"
-                    size={16}
-                    color={
-                      recovery.readiness === 'fresh' ? colors.success : recovery.readiness === 'moderate' ? colors.warning : colors.danger
-                    }
-                    style={{ marginTop: 2 }}
-                  />
-                  <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19, flex: 1 }}>{recovery.message}</Text>
-                </View>
-              </Card>
-            )}
+          {plan && focusDomain === 'training' && (
+            <Card>
+              <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>
+                TRAINING PLAN
+              </Text>
+              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{plan.training.daysPerWeek}x/week</Text>
+              <Text style={{ color: colors.text2, fontSize: 12, marginTop: 2, textTransform: 'capitalize' }}>
+                {plan.training.phase ?? plan.training.level}
+              </Text>
+            </Card>
+          )}
 
-            <View style={{ flexDirection: 'row', gap: spacing.md }}>
-              <Pressable onPress={() => router.push('/nutrition')} style={{ flex: 1 }}>
-                <Card>
-                  <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Nutrition</Text>
-                  <View style={{ width: 52, height: 52, borderRadius: 26, borderWidth: 5, borderColor: nutritionColor, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-                    <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700' }}>{Math.round(status.pct.kcal * 100)}%</Text>
-                  </View>
-                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>{nutritionWord}</Text>
-                  <Text style={{ color: colors.text2, fontSize: 11, marginTop: 2 }}>Tap for details</Text>
-                </Card>
-              </Pressable>
+          <TrackingCard />
+        </View>
 
-              <Pressable onPress={() => router.push('/training')} style={{ flex: 1 }}>
-                <Card>
-                  <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Up next</Text>
-                  <Feather name="activity" size={24} color={colors.accent} style={{ marginBottom: 8 }} />
-                  {hasActiveMeso && nextSession ? (
-                    <>
-                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
-                        {nextSession.dayLabel}
-                      </Text>
-                      <Text style={{ color: colors.text2, fontSize: 11, marginTop: 2 }}>
-                        Week {nextSession.week}
-                        {nextSession.isDeload ? ' · Deload' : ''}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>No active plan</Text>
-                      <Text style={{ color: colors.text2, fontSize: 11, marginTop: 2 }}>Tap to start one</Text>
-                    </>
-                  )}
-                </Card>
-              </Pressable>
+        {/* CHAT — v1: responde y ya registra peso/comida (ver lib/data/chat.ts) */}
+        <ScrollView
+          ref={scrollRef}
+          style={{ flex: 1, paddingHorizontal: spacing.lg, marginTop: spacing.md }}
+          contentContainerStyle={{ paddingBottom: spacing.lg }}
+        >
+          {messages.length === 0 ? (
+            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xl * 2 }}>
+              <Feather name="message-circle" size={28} color={colors.text2} />
+              <Text style={{ color: colors.text2, fontSize: 13, marginTop: 8, textAlign: 'center' }}>
+                Pregúntame sobre tu objetivo o tu plan de hoy — o cuéntame qué pesaste o qué comiste.
+              </Text>
             </View>
-          </>
-        )}
+          ) : (
+            messages.map((m) => (
+              <View
+                key={m.id}
+                style={{
+                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  backgroundColor: m.role === 'user' ? colors.accent : colors.surface2,
+                  borderRadius: 16,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: 10,
+                  marginBottom: spacing.sm,
+                  maxWidth: '85%',
+                }}
+              >
+                <Text style={{ color: m.role === 'user' ? '#fff' : colors.text, fontSize: 14, lineHeight: 19 }}>{m.text}</Text>
+              </View>
+            ))
+          )}
+          {sending && <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.sm, alignSelf: 'flex-start' }} />}
+        </ScrollView>
 
-        <TrackingCard />
-
-        {/* Espacio reservado para lo que aún no existe: peso/tendencia */}
-        <Card style={{ borderStyle: 'dashed', opacity: 0.5 }}>
-          <Text style={{ color: colors.text2, fontSize: 12, textAlign: 'center' }}>
-            Weight trend widget will live here once that piece is built.
-          </Text>
-        </Card>
-
-        <QuestionCard userId={userId} />
-      </ScrollView>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: spacing.sm,
+            paddingHorizontal: spacing.lg,
+            paddingVertical: spacing.md,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            backgroundColor: colors.surface,
+          }}
+        >
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Escribe aquí…"
+            placeholderTextColor={colors.text2}
+            onSubmitEditing={handleSend}
+            editable={!sending}
+            style={{
+              flex: 1,
+              backgroundColor: colors.surface2,
+              borderRadius: 20,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 10,
+              color: colors.text,
+              fontSize: 14,
+            }}
+          />
+          <Pressable
+            onPress={handleSend}
+            disabled={sending || !draft.trim()}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: draft.trim() ? colors.accent : colors.surface2,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Feather name="arrow-up" size={18} color={draft.trim() ? '#fff' : colors.text2} />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

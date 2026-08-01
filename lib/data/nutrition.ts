@@ -46,6 +46,23 @@ export async function fetchCurrentMacroGoal(userId: string): Promise<MacroGoals 
   return (data as MacroGoals) || null;
 }
 
+// Solo metadata (sin los valores) — usado para el límite de "no más de un
+// ajuste automático por semana" del bucle de adherencia, ver
+// lib/engine/recommendation-engine.ts (computeAdherenceAdjustment) y
+// lib/data/recommendation.ts.
+export async function fetchLatestMacroGoalRecord(userId: string): Promise<{ setAt: string; source: string } | null> {
+  const { data, error } = await supabase
+    .from('macro_goals')
+    .select('set_at, source')
+    .eq('user_id', userId)
+    .order('set_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? { setAt: data.set_at as string, source: data.source as string } : null;
+}
+
 export async function saveMacroGoal(
   userId: string,
   goal: MacroGoals,

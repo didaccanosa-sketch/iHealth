@@ -8,9 +8,16 @@ import { loadUserModel } from '../../features/profile/data/user-model-data';
 import { fetchWeightHistory } from './weight-logs';
 import { fetchStrengthHistory } from './strength-history';
 import { fetchRecentSessionFeedback } from './workout';
+import { fetchLatestMacroGoalRecord, saveMacroGoal } from './nutrition';
 import { evaluateGoal, GoalEvaluation, GOAL_METRICS } from '../engine/goal-engine';
 import { evaluateRecovery } from '../engine/recovery-engine';
-import { computeStrategyPlan, validateStrategyPlan, StrategyPlan, StrategyPlannerContext } from '../engine/recommendation-engine';
+import {
+  computeStrategyPlan,
+  validateStrategyPlan,
+  computeAdherenceAdjustment,
+  StrategyPlan,
+  StrategyPlannerContext,
+} from '../engine/recommendation-engine';
 
 // Reúne el contexto real del usuario. Devuelve null si todavía no hay
 // objetivo fijado — sin eso el Strategy Planner no tiene nada que planear.
@@ -72,12 +79,52 @@ export async function buildStrategyContext(userId: string): Promise<StrategyPlan
 }
 
 // Punto de entrada único: contexto real -> Strategy Planner -> Validation.
-// null si todavía no hay objetivo fijado (ver buildStrategyContext).
+// null si todavía no hay objetivo fijado (ver buildStrategyContext). Vista
+// previa pura — nunca guarda nada (Nutrition/Workout siguen enseñando esto
+// como propuesta a confirmar, ver docs/RECOMMENDATION_ENGINE.md).
 export async function getStrategyRecommendation(userId: string): Promise<StrategyPlan | null> {
   const ctx = await buildStrategyContext(userId);
   if (!ctx) return null;
   const plan = computeStrategyPlan(ctx);
   return validateStrategyPlan(plan, ctx).plan;
+}
+
+const ADHERENCE_ADJUSTMENT_MIN_DAYS = 7;
+
+export type StrategyRecommendationWithAdjustment = {
+  plan: StrategyPlan;
+  adjustmentReason: string | null;
+};
+
+// Punto de entrada para la pantalla única (Today): igual que
+// getStrategyRecommendation, pero además aplica el bucle de adherencia
+// (paso 8 del TODO) — si el Goal Engine dice que vas por detrás de tu
+// objetivo de peso y no ha habido un ajuste en los últimos 7 días, reajusta
+// las calorías y LO GUARDA solo (decisión ya tomada: sin pantalla de
+// edición manual para esto). Nunca en silencio: si ajusta algo, devuelve la
+// razón para que se pueda mostrar. Solo se llama desde aquí — Nutrition y
+// Workout siguen usando getStrategyRecommendation, que nunca guarda nada.
+export async function getStrategyRecommendationWithAdjustment(
+  userId: string
+): Promise<StrategyRecommendationWithAdjustment | null> {
+  const ctx = await buildStrategyContext(userId);
+  if (!ctx) return null;
+  const plan = computeStrategyPlan(ctx);
+  const validated = validateStrategyPlan(plan, ctx).plan;
+
+  const latest = await fetchLatestMacroGoalRecord(userId).catch(() => null);
+  const daysSinceLastChange = latest ? (Date.now() - new Date(latest.setAt).getTime()) / (1000 * 60 * 60 * 24) : Infinity;
+  if (daysSinceLastChange < ADHERENCE_ADJUSTMENT_MIN_DAYS) {
+    return { plan: validated, adjustmentReason: null };
+  }
+
+  const { plan: adjustedPlan, adjusted, reason } = computeAdherenceAdjustment(validated, ctx);
+  if (!adjusted) {
+    return { plan: validated, adjustmentReason: null };
+  }
+
+  await saveMacroGoal(userId, adjustedPlan.nutrition, 'recommendation_engine');
+  return { plan: adjustedPlan, adjustmentReason: reason };
 }
 
 // Redacción con IA (capa de IA, paso 6) — coge los hechos en español sencillo

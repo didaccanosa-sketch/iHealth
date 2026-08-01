@@ -1,50 +1,22 @@
 import { Tabs } from 'expo-router';
-import Feather from '@expo/vector-icons/Feather';
-import { useAppTheme } from '../../lib/theme-context';
 
+// Pantalla única: la barra de pestañas se oculta y solo "index" es el
+// camino principal (ver docs/SIMPLIFIED_VISION.md). Las pantallas antiguas
+// (nutrition, training, progress) se quedan como rutas válidas por si algo
+// necesita enlazar a ellas puntualmente, pero ya no aparecen en la
+// navegación principal.
 export default function TabsLayout() {
-  const { colors } = useAppTheme();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.text2,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-        },
+        tabBarStyle: { display: 'none' },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Today',
-          tabBarIcon: ({ color, size }) => <Feather name="calendar" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="nutrition"
-        options={{
-          title: 'Nutrition',
-          tabBarIcon: ({ color, size }) => <Feather name="pie-chart" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="training"
-        options={{
-          title: 'Training',
-          tabBarIcon: ({ color, size }) => <Feather name="activity" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="progress"
-        options={{
-          title: 'Progress',
-          tabBarIcon: ({ color, size }) => <Feather name="user" size={size} color={color} />,
-        }}
-      />
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="nutrition" options={{ href: null }} />
+      <Tabs.Screen name="training" options={{ href: null }} />
+      <Tabs.Screen name="progress" options={{ href: null }} />
     </Tabs>
   );
 }
