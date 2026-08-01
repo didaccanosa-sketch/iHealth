@@ -1,7 +1,7 @@
 // Goal Engine — UI completa (Progress): fijar/editar objetivo, ver
 // veredicto y registrar peso. La versión compacta de solo lectura vive en
 // GoalSummaryCard (Today). Ambas comparten datos vía useGoalEvaluation.
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { Card } from '../Card';
 import { useAppTheme } from '../../lib/theme-context';
@@ -36,6 +36,18 @@ export function GoalCard() {
   const [weightInput, setWeightInput] = useState('');
   const [logging, setLogging] = useState(false);
   const [logged, setLogged] = useState(false);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todaysWeight = history.find((p) => p.date === todayStr) ?? null;
+
+  // Si hoy ya se registró un peso, el campo se rellena con ese valor en vez
+  // de quedarse vacío — no se puede añadir uno segundo, solo corregir el de
+  // hoy. Se sincroniza cuando cambia el histórico (carga inicial o tras
+  // registrar/actualizar), no en cada pulsación de tecla.
+  useEffect(() => {
+    setWeightInput(todaysWeight ? String(todaysWeight.value) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
 
   const openEdit = useCallback(() => {
     if (model) {
@@ -85,7 +97,6 @@ export function GoalCard() {
     setLogging(true);
     try {
       await logWeight(userId, kg);
-      setWeightInput('');
       setLogged(true);
       refresh();
       setTimeout(() => setLogged(false), 2500);
@@ -276,25 +287,36 @@ export function GoalCard() {
       )}
 
       {metric === 'weight' && (
-        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
-          <TextInput
-            value={weightInput}
-            onChangeText={setWeightInput}
-            keyboardType="decimal-pad"
-            placeholder="Peso de hoy (kg)"
-            placeholderTextColor={colors.text2}
-            style={[inputStyle, { flex: 1 }]}
-          />
-          <Pressable
-            onPress={submitWeight}
-            disabled={logging}
-            style={{ backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 16, justifyContent: 'center', opacity: logging ? 0.6 : 1 }}
-          >
-            {logging ? <ActivityIndicator color={colors.accentText} /> : <Text style={{ color: colors.accentText, fontWeight: '700' }}>Registrar</Text>}
-          </Pressable>
-        </View>
+        <>
+          {todaysWeight && (
+            <Text style={{ color: colors.text2, fontSize: 12, marginTop: spacing.md }}>
+              Ya has registrado tu peso hoy — puedes corregirlo aquí abajo.
+            </Text>
+          )}
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: todaysWeight ? 6 : spacing.md }}>
+            <TextInput
+              value={weightInput}
+              onChangeText={setWeightInput}
+              keyboardType="decimal-pad"
+              placeholder="Peso de hoy (kg)"
+              placeholderTextColor={colors.text2}
+              style={[inputStyle, { flex: 1 }]}
+            />
+            <Pressable
+              onPress={submitWeight}
+              disabled={logging}
+              style={{ backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 16, justifyContent: 'center', opacity: logging ? 0.6 : 1 }}
+            >
+              {logging ? (
+                <ActivityIndicator color={colors.accentText} />
+              ) : (
+                <Text style={{ color: colors.accentText, fontWeight: '700' }}>{todaysWeight ? 'Actualizar' : 'Registrar'}</Text>
+              )}
+            </Pressable>
+          </View>
+        </>
       )}
-      {logged && <Text style={{ color: colors.success, fontSize: 12, marginTop: 6 }}>Registrado</Text>}
+      {logged && <Text style={{ color: colors.success, fontSize: 12, marginTop: 6 }}>Guardado</Text>}
     </Card>
   );
 }

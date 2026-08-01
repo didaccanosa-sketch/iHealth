@@ -7,12 +7,13 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Si ya hay un peso guardado para ese día, lo sustituye en vez de crear
+// otro — solo puede haber un peso por día (ver restricción única en
+// schema.sql).
 export async function logWeight(userId: string, kg: number, loggedAt?: string): Promise<void> {
-  const { error } = await supabase.from('weight_logs').insert({
-    user_id: userId,
-    kg,
-    logged_at: loggedAt ?? todayKey(),
-  });
+  const { error } = await supabase
+    .from('weight_logs')
+    .upsert({ user_id: userId, kg, logged_at: loggedAt ?? todayKey() }, { onConflict: 'user_id,logged_at' });
   if (error) throw error;
 }
 

@@ -37,6 +37,20 @@ alter table weight_logs enable row level security;
 drop policy if exists "weight_logs: all own" on weight_logs;
 create policy "weight_logs: all own" on weight_logs for all using (auth.uid() = user_id);
 
+-- Máximo un peso por persona y día. Si ya había más de uno de antes de
+-- este cambio, se queda solo el más reciente antes de bloquear los demás.
+delete from weight_logs a using weight_logs b
+where a.user_id = b.user_id
+  and a.logged_at = b.logged_at
+  and a.created_at < b.created_at;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'weight_logs_user_date_unique') then
+    alter table weight_logs add constraint weight_logs_user_date_unique unique (user_id, logged_at);
+  end if;
+end $$;
+
 -- ─── COMIDAS (Nutrition Engine) ──────────────────────────────────────────────
 create table if not exists meals (
   id uuid primary key default gen_random_uuid(),

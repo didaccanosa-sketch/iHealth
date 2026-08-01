@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  Alert,
   Text,
   View,
   Pressable,
@@ -25,6 +26,7 @@ import {
   fetchMealsForDate,
   fetchMealsForDateRange,
   fetchCurrentMacroGoal,
+  saveMacroGoal,
   getNutritionInsight,
   insertMeal,
   updateMeal,
@@ -41,6 +43,7 @@ import {
   deleteDayTemplate,
   DayTemplate,
 } from '../../lib/data/nutrition';
+import { getStrategyRecommendation } from '../../lib/data/recommendation';
 
 export default function NutritionScreen() {
   const { colors } = useAppTheme();
@@ -62,6 +65,7 @@ export default function NutritionScreen() {
   const [dayTemplateName, setDayTemplateName] = useState('');
   const [nutritionLine, setNutritionLine] = useState<string | null>(null);
   const [macroGoals, setMacroGoals] = useState<MacroGoals>(DEFAULT_GOALS);
+  const [recommending, setRecommending] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -262,6 +266,38 @@ export default function NutritionScreen() {
     }
   }
 
+  async function handleRecommend() {
+    setRecommending(true);
+    try {
+      const plan = await getStrategyRecommendation(userId);
+      if (!plan) {
+        const msg = 'Primero fija un objetivo en Progress — sin eso el motor no tiene qué calcular.';
+        if (Platform.OS === 'web') window.alert(msg);
+        else Alert.alert('Sin objetivo', msg);
+        return;
+      }
+      const { kcal, protein_g, carbs_g, fat_g, fiber_g } = plan.nutrition;
+      const summary = `Calorías: ${kcal} kcal\nProteína: ${protein_g} g\nCarbohidratos: ${carbs_g} g\nGrasa: ${fat_g} g\nFibra: ${fiber_g} g`;
+      const apply = async () => {
+        await saveMacroGoal(userId, plan.nutrition, 'recommendation_engine');
+        setMacroGoals(plan.nutrition);
+      };
+      if (Platform.OS === 'web') {
+        if (window.confirm(`Objetivo propuesto:\n${summary}\n\n¿Aplicar?`)) await apply();
+      } else {
+        Alert.alert('Objetivo propuesto', summary, [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Aplicar', onPress: apply },
+        ]);
+      }
+    } catch (e: any) {
+      const msg = e.message || 'No se pudo calcular la recomendación, inténtalo de nuevo.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Error', msg);
+    }
+    setRecommending(false);
+  }
+
   return (
     <Screen title="Nutrition">
       <Card variant="glass">
@@ -273,6 +309,18 @@ export default function NutritionScreen() {
         <Text style={{ color: colors.text, fontSize: 13, marginTop: 4, lineHeight: 18 }}>
           {nutritionLine || nutritionCoachLine(status)}
         </Text>
+        <Pressable
+          onPress={handleRecommend}
+          disabled={recommending}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm, opacity: recommending ? 0.6 : 1 }}
+        >
+          {recommending ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Feather name="zap" size={13} color={colors.accent} />
+          )}
+          <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>Recalcular con el motor</Text>
+        </Pressable>
       </Card>
 
       {error && !modalOpen && (

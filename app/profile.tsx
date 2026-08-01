@@ -2,11 +2,12 @@
 // Cubre los campos de Identity del User Model (nombre, edad, sexo, altura,
 // peso inicial): datos que el usuario ya conoce, se editan a mano aquí, no
 // pasan por el Question Engine. La foto de perfil se deja fuera por ahora
-// (necesita Supabase Storage — pieza aparte). Los ajustes de cuenta (email,
-// contraseña, logout, tema) están marcados "Coming soon": el hueco ya está
-// reservado en la pantalla, pero construirlos es una pieza aparte.
+// (necesita Supabase Storage — pieza aparte). Log out ya es funcional
+// (2026-08-01, supabase.auth.signOut() + confirmación). Email, contraseña y
+// tema siguen marcados "Coming soon": el hueco ya está reservado en la
+// pantalla, pero construirlos es una pieza aparte.
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
@@ -63,9 +64,26 @@ function FieldRow({
 
 export default function ProfileScreen() {
   const { colors } = useAppTheme();
-  const { session } = useAuth();
+  const { session, signOut } = useAuth();
   const router = useRouter();
   const userId = session?.user.id as string;
+
+  const handleLogout = useCallback(() => {
+    const doLogout = () => {
+      signOut().catch(() => {
+        // si falla el signOut remoto, igualmente no hay mucho que mostrar
+        // aquí — el listener de onAuthStateChange ya limpia la sesión local
+      });
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Cerrar sesión?')) doLogout();
+    } else {
+      Alert.alert('Cerrar sesión', '¿Seguro que quieres cerrar sesión?', [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Cerrar sesión', style: 'destructive', onPress: doLogout },
+      ]);
+    }
+  }, [signOut]);
 
   const [model, setModel] = useState<UserModelData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -262,23 +280,28 @@ export default function ProfileScreen() {
           <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: spacing.sm }}>
             SETTINGS
           </Text>
-          {SETTINGS_ROWS.map((row, i) => (
-            <View
-              key={row.label}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 12,
-                borderTopWidth: i === 0 ? 0 : 1,
-                borderTopColor: colors.border,
-                opacity: 0.45,
-              }}
-            >
-              <Feather name={row.icon} size={16} color={colors.text2} style={{ marginRight: spacing.sm }} />
-              <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>{row.label}</Text>
-              <Text style={{ color: colors.text2, fontSize: 10, fontWeight: '700' }}>COMING SOON</Text>
-            </View>
-          ))}
+          {SETTINGS_ROWS.map((row, i) => {
+            const isLogout = row.label === 'Log out';
+            const Row = isLogout ? Pressable : View;
+            return (
+              <Row
+                key={row.label}
+                onPress={isLogout ? handleLogout : undefined}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 12,
+                  borderTopWidth: i === 0 ? 0 : 1,
+                  borderTopColor: colors.border,
+                  opacity: isLogout ? 1 : 0.45,
+                }}
+              >
+                <Feather name={row.icon} size={16} color={isLogout ? colors.danger : colors.text2} style={{ marginRight: spacing.sm }} />
+                <Text style={{ color: isLogout ? colors.danger : colors.text, fontSize: 14, flex: 1 }}>{row.label}</Text>
+                {!isLogout && <Text style={{ color: colors.text2, fontSize: 10, fontWeight: '700' }}>COMING SOON</Text>}
+              </Row>
+            );
+          })}
         </Card>
       </ScrollView>
     </SafeAreaView>

@@ -39,19 +39,30 @@ the whole tree "just in case" — come back here instead.
 
 - `workout-engine.ts`, `cardio-engine.ts` — training calculations/progression.
 - `nutrition-engine.ts` — macro/calorie calculations.
+- `nutritionInsight.ts` — Nutrition Insight Engine (facts for the AI-redacted coach line).
+- `goal-engine.ts` — Goal Engine (trend/verdict from a metric history + target).
+- `recovery-engine.ts` — Recovery Engine (readiness from session feedback).
+- `recommendation-engine.ts` — Recommendation Engine's Strategy Planner +
+  Validation (`computeStrategyPlan`, `validateStrategyPlan`). Orchestrator
+  core — see `docs/RECOMMENDATION_ENGINE.md` for the full design and
+  `TODO.md` ("Orden de construcción") for build status.
 - `meso-templates.ts`, `exercise-db.ts` — static data/templates.
 - `types.ts` — shared engine types.
 
-Note: today these engines are independent per-module (no unified Goal Engine /
-User Model / Recommendation Engine yet — that's the future architecture, see
-SYSTEM_ARCHITECTURE.md). Don't assume orchestration exists until it's built.
+Note: these engines are still independent per-module — the Recommendation
+Engine reads them, they don't read each other. See SYSTEM_ARCHITECTURE.md and
+docs/RECOMMENDATION_ENGINE.md for how the orchestration layer is meant to work.
 
 ## lib/data/
 
-`cardio.ts`, `nutrition.ts`, `profile.ts`, `workout.ts` — Supabase CRUD per domain.
+`cardio.ts`, `nutrition.ts`, `profile.ts`, `workout.ts`, `weight-logs.ts`,
+`strength-history.ts` — Supabase CRUD per domain.
 
-## features/ (empty — future only)
+## features/ (new modular development — see PRODUCT_CONSTITUTION.md)
 
 `goal/ nutrition/ workout/ recommendation/ profile/ social/` — one folder per
-future engine/module. Nothing lives here yet. See PRODUCT_CONSTITUTION.md
-before adding anything.
+future engine/module, built only as each piece actually gets built (not
+scaffolded ahead of time). `profile/` is the only one with real content so
+far: the User Model Engine (`engine/`, `data/`, `QuestionCard.tsx`) — see
+`docs/USER_MODEL.md`. The rest are still empty; don't add to them
+speculatively.

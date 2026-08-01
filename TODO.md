@@ -69,10 +69,17 @@
       Today se actualice solo), edad/sexo/altura/peso inicial, y una
       tarjeta "Settings" con Email/Password/Theme/Log out como
       placeholders "Coming soon" (ninguno funcional todavía).
+- [x] **Log out funcional (2026-08-01)** — `supabase.auth.signOut()` con
+      confirmación antes (`window.confirm` en web, `Alert.alert` en
+      nativo). Arreglado de paso el motivo original: sin logout real, tras
+      borrar un usuario de prueba en Supabase la sesión vieja se quedaba
+      cacheada en el navegador y cualquier escritura nueva violaba la FK
+      de `user_id` contra `profiles` — ya se puede cerrar sesión desde la
+      propia app en vez de borrar el local storage a mano.
 - [ ] Pendiente encima de esto: Goal Chat (onboarding conversacional IA),
       auto-relleno real desde otros engines hacia `user_model`,
       Recommendation Engine leyéndolo, y el resto de Settings (email,
-      contraseña, logout, tema, foto de perfil).
+      contraseña, tema, foto de perfil).
 
 ## Goal Engine — v1 construido (2026-08-01)
 - [x] Motor genérico en `lib/engine/goal-engine.ts` (lógica pura, sin
@@ -114,6 +121,13 @@
       dice lo que de verdad has avanzado sea cual sea el ritmo. Punto de
       partida: `identity.startingWeightKg` para peso, primer punto del
       histórico para fuerza.
+- [x] **Peso: máximo un registro al día (2026-08-01)**. Antes se podía meter
+      el peso varias veces el mismo día y quedaban todos guardados por
+      separado. Ahora, si ya registraste hoy, el campo de Progress se
+      rellena solo con lo que pusiste y el botón cambia a "Actualizar" —
+      no hay forma de añadir uno segundo, solo corregir el de hoy.
+      (**Pendiente: ejecutar el cambio de base de datos contra Supabase**,
+      como con las demás tablas/cambios nuevos.)
 - [x] Borradas las tablas `goals` y `goal_predictions` de `schema.sql` —
       restos del scaffolding original, duplicadas con `user_model.goals`,
       ningún código las usaba. `goal_predictions` dependía de `goals` por
@@ -272,6 +286,15 @@ De lo que no depende de nada más a lo que depende de otras piezas:
    (crear mesociclo) y Nutrition Engine (ya con el paso 3 hecho). El
    motor empieza a ser usable de verdad para las entradas Nutrition y
    Workout, pasando por el wizard/edición como paso de revisión.
+   - [x] **Nutrition (2026-08-01)** — junta objetivo + histórico + estado de
+     recuperación real del usuario y llama al Strategy Planner
+     (`lib/data/recommendation.ts`, `getStrategyRecommendation`). Botón
+     "Recalcular con el motor" en Nutrition: enseña la propuesta antes de
+     nada, solo se guarda si confirmas. Si no hay objetivo fijado, avisa
+     en vez de fallar.
+   - [ ] **Workout** — pendiente, más grande: hay que enchufarlo dentro del
+     asistente de crear rutina (entra por "Build it with AI chat" en el
+     selector, ver sección Entrada Workout más abajo).
 5. **Daily planning** — de la estrategia confirmada a "el plan de hoy"
    (entreno de hoy, macros de hoy, foco de hoy) para el Home. Depende de
    que el paso 4 ya esté guardando algo real.

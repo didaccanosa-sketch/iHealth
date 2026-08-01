@@ -20,6 +20,41 @@ Format:
 
 ---
 
+## 2026-08-01 (noche — Recommendation Engine, paso 4 parcial: entrada Nutrition)
+- New `lib/data/recommendation.ts`: `buildStrategyContext()` (assembles
+  real Goal Engine evaluation + Recovery Engine readiness + User Model into
+  `StrategyPlannerContext`) and `getStrategyRecommendation()` (context →
+  `computeStrategyPlan` → `validateStrategyPlan`). This is the first real
+  caller of the Recommendation Engine core built earlier today.
+- Nutrition screen has a working "Recalcular con el motor" button — shows
+  the proposed macro goal, only saves (`saveMacroGoal`, source
+  `recommendation_engine`) if the user confirms. Workout entry point still
+  not wired (needs the mesocycle wizard, separate step).
+
+## 2026-08-01 (tarde — Recommendation Engine, pasos 1-3)
+- Added `lib/engine/recommendation-engine.ts`: `computeStrategyPlan()`
+  (Strategy Planner — deterministic targets for calories/macros, training
+  frequency+phase, cardio/week, generic sleep/steps) and
+  `validateStrategyPlan()` (safety/coherence checks, adjusts and explains).
+  Full design in new `docs/RECOMMENDATION_ENGINE.md`.
+- New `macro_goals` table (`supabase/schema.sql`, history by date) +
+  `fetchCurrentMacroGoal`/`saveMacroGoal` in `lib/data/nutrition.ts`. Today
+  and Nutrition screens now load the user's saved goal, falling back to
+  `DEFAULT_GOALS` only if none exists yet.
+- `weight_logs` now has a unique `(user_id, logged_at)` constraint — one
+  weight entry per day, `logWeight` upserts instead of inserting.
+  `GoalCard.tsx` reflects this (pre-fills today's value, edits in place).
+- Implemented real logout (`app/profile.tsx`, was a "Coming soon" placeholder).
+
+## 2026-08-01 (retroactivo — no logueado en su momento)
+- **Goal Engine v1** and **Recovery Engine v1** were built earlier this same
+  day (see `TODO.md` for full detail) but not logged here at the time:
+  `lib/engine/goal-engine.ts` (trend/verdict engine, generic per
+  `GoalConfidence`), `lib/engine/recovery-engine.ts` (readiness from session
+  feedback), `lib/data/weight-logs.ts` + `lib/data/strength-history.ts`,
+  `components/goal/*`. `goals`/`goal_predictions` tables dropped from
+  `schema.sql` (superseded by `user_model.goals`).
+
 ## 2026-08-01
 - Built the first version of the **User Model Engine** in `features/profile/`
   (`engine/types.ts`, `engine/user-model.ts`, `engine/questions.ts`,
