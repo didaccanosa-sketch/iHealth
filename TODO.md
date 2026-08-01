@@ -106,6 +106,13 @@
       duplicar lógica entre las dos vistas. Today usa `GoalSummaryCard`
       (solo lectura, glass, tapa a Progress); Progress usa `GoalCard`
       (fijar/editar objetivo, registrar peso, gráfico).
+- [x] Halo de progreso en el `GoalSummaryCard` de Today (mismo estilo que
+      el ring de Nutrition) — `progressFraction` nueva en `goal-engine.ts`.
+      Es progreso de **valor** (cuánto llevas recorrido desde tu peso/marca
+      de partida hasta el objetivo), no de tiempo — decisión explícita,
+      dice lo que de verdad has avanzado sea cual sea el ritmo. Punto de
+      partida: `identity.startingWeightKg` para peso, primer punto del
+      histórico para fuerza.
 - [x] Borradas las tablas `goals` y `goal_predictions` de `schema.sql` —
       restos del scaffolding original, duplicadas con `user_model.goals`,
       ningún código las usaba. `goal_predictions` dependía de `goals` por

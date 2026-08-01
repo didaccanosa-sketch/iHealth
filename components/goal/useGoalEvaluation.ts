@@ -13,6 +13,7 @@ import {
   MetricPoint,
   estimateFitnessBaseline,
   genericWeightRateMagnitude,
+  progressFraction,
 } from '../../lib/engine/goal-engine';
 import { fetchWeightHistory } from '../../lib/data/weight-logs';
 import { fetchStrengthHistory } from '../../lib/data/strength-history';
@@ -22,6 +23,7 @@ export function useGoalEvaluation(userId: string) {
   const [loading, setLoading] = useState(true);
   const [evaluation, setEvaluation] = useState<GoalEvaluation | null>(null);
   const [history, setHistory] = useState<MetricPoint[]>([]);
+  const [progress, setProgress] = useState<number | null>(null);
   const [evalLoading, setEvalLoading] = useState(false);
 
   const runEvaluation = useCallback(
@@ -30,6 +32,7 @@ export function useGoalEvaluation(userId: string) {
       if (!goalType || !canEvaluate(goalType)) {
         setEvaluation(null);
         setHistory([]);
+        setProgress(null);
         return;
       }
       setEvalLoading(true);
@@ -39,10 +42,16 @@ export function useGoalEvaluation(userId: string) {
         let targetValue: number | null = null;
         let fallbackCurrentValue: number | null = null;
         let genericRateMagnitude: number | null = null;
+        // Punto de partida para el halo de progreso — distinto del "punto
+        // de partida para la tendencia" (que puede ser el registro más
+        // reciente si no hay histórico): esto es siempre de dónde saliste,
+        // no de dónde estás midiendo ahora.
+        let startValue: number | null = null;
         if (metric === 'weight') {
           points = await fetchWeightHistory(userId);
           targetValue = m.goals.targetWeightKg.value;
-          fallbackCurrentValue = points.length ? null : m.identity.startingWeightKg.value;
+          startValue = m.identity.startingWeightKg.value;
+          fallbackCurrentValue = points.length ? null : startValue;
           const referenceValue = points.length ? points[points.length - 1].value : fallbackCurrentValue;
           const baseline = estimateFitnessBaseline({
             dailyActivity: m.lifestyle.dailyActivity.value,
@@ -55,23 +64,28 @@ export function useGoalEvaluation(userId: string) {
           const exercise = m.goals.targetExercise.value;
           if (exercise) points = await fetchStrengthHistory(userId, exercise);
           targetValue = m.goals.targetExerciseKg.value;
+          startValue = points.length ? points[0].value : null;
         }
         setHistory(points);
         if (targetValue == null) {
           setEvaluation(null);
+          setProgress(null);
           return;
         }
-        setEvaluation(
-          evaluateGoal({
-            history: points,
-            targetValue,
-            targetDate: m.goals.targetDate.value,
-            fallbackCurrentValue,
-            genericRateMagnitude,
-          })
+        const result = evaluateGoal({
+          history: points,
+          targetValue,
+          targetDate: m.goals.targetDate.value,
+          fallbackCurrentValue,
+          genericRateMagnitude,
+        });
+        setEvaluation(result);
+        setProgress(
+          startValue != null && result.currentValue != null ? progressFraction(startValue, result.currentValue, targetValue) : null
         );
       } catch {
         setEvaluation(null);
+        setProgress(null);
       } finally {
         setEvalLoading(false);
       }
@@ -115,5 +129,5 @@ export function useGoalEvaluation(userId: string) {
     if (model) runEvaluation(model);
   }, [model, runEvaluation]);
 
-  return { model, loading, hasGoal, goalType, metric, evaluation, evalLoading, history, applyModel, refresh };
+  return { model, loading, hasGoal, goalType, metric, evaluation, evalLoading, history, progress, applyModel, refresh };
 }

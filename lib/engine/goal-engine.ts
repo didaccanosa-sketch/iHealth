@@ -313,6 +313,17 @@ export function evaluateGoal(input: EvaluateGoalInput): GoalEvaluation {
   };
 }
 
+// Fracción (0-1) recorrida desde el punto de partida hasta el objetivo —
+// para el halo de progreso de Today. Distinto de "on_track/behind": esto no
+// dice si vas al ritmo necesario, solo cuánto camino real llevas hecho.
+// Se recorta a [0, 1] — pasarse del objetivo no pinta más del 100%.
+export function progressFraction(startValue: number, currentValue: number, targetValue: number): number {
+  const total = targetValue - startValue;
+  if (total === 0) return 1;
+  const done = (currentValue - startValue) / total;
+  return Math.max(0, Math.min(1, done));
+}
+
 // Para cuando el usuario propone una fecha *antes* de tener histórico
 // (p.ej. al fijar el objetivo por primera vez): sin datos reales el motor
 // no puede estimar dificultad todavía, solo puede decirlo explícitamente.
