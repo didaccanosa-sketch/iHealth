@@ -87,10 +87,18 @@ export default function ProfileScreen() {
 
   const handleLogout = useCallback(() => {
     const doLogout = () => {
-      signOut().catch(() => {
-        // si falla el signOut remoto, igualmente no hay mucho que mostrar
-        // aquí — el listener de onAuthStateChange ya limpia la sesión local
-      });
+      signOut()
+        .catch(() => {
+          // si falla el signOut remoto, igualmente no hay mucho que mostrar
+          // aquí — el listener de onAuthStateChange ya limpia la sesión local
+        })
+        .finally(() => {
+          // Resetea la URL a la raíz — si no, en web se queda en /profile y
+          // al volver a iniciar sesión (o crear cuenta) Expo Router aterriza
+          // ahí directo, sin nada debajo en el historial (router.back() no
+          // tiene a dónde ir).
+          router.replace('/');
+        });
     };
     if (Platform.OS === 'web') {
       if (window.confirm('¿Cerrar sesión?')) doLogout();
@@ -100,7 +108,7 @@ export default function ProfileScreen() {
         { text: 'Cerrar sesión', style: 'destructive', onPress: doLogout },
       ]);
     }
-  }, [signOut]);
+  }, [signOut, router]);
 
   const [model, setModel] = useState<UserModelData | null>(null);
   const [loading, setLoading] = useState(true);

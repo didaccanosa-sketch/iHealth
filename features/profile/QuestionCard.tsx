@@ -4,9 +4,10 @@
 // respuesta) y flecha adelante (saltar la actual sin contestarla). Todo el
 // historial de esta sesión vive solo en memoria — se resetea al reabrir la
 // app, no se persiste en ningún sitio.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import { useFocusEffect } from 'expo-router';
 import { Card } from '../../components/Card';
 import { useAppTheme } from '../../lib/theme-context';
 import { spacing } from '../../constants/theme';
@@ -35,25 +36,36 @@ export function QuestionCard({ userId }: { userId: string }) {
   const [saving, setSaving] = useState(false);
   const [textValue, setTextValue] = useState('');
 
+  // El modelo puede haber cambiado fuera de esta tarjeta (ej. objetivo
+  // fijado desde Progress) mientras Today se queda montado en segundo plano
+  // al cambiar de pestaña — sin esto, la tarjeta seguía preguntando algo que
+  // ya se había respondido en otro sitio porque nunca recargaba el modelo.
+  const skippedRef = useRef(skipped);
+  useEffect(() => {
+    skippedRef.current = skipped;
+  }, [skipped]);
+
   useEffect(() => {
     setTextValue('');
   }, [question?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
-    loadUserModel(userId)
-      .then((m) => {
-        if (cancelled) return;
-        setModel(m);
-        setQuestion(pickNext(m, new Set()));
-      })
-      .catch(() => {
-        // si falla la carga, simplemente no se muestra la tira
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadUserModel(userId)
+        .then((m) => {
+          if (cancelled) return;
+          setModel(m);
+          setQuestion(pickNext(m, skippedRef.current));
+        })
+        .catch(() => {
+          // si falla la carga, simplemente no se muestra la tira
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [userId])
+  );
 
   const answer = useCallback(
     async (value: unknown) => {
