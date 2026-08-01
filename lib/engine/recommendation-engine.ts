@@ -262,7 +262,10 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
       dailyStepsTarget: GENERIC_DAILY_STEPS_TARGET,
     },
     water: {
-      dailyMlTarget: GENERIC_DAILY_WATER_ML_TARGET,
+      // ~35ml/kg de peso corporal (guía habitual), genérico fijo si todavía
+      // no sabemos el peso — mismo criterio que las calorías: nunca inventa
+      // precisión que no hay.
+      dailyMlTarget: currentWeightKg !== null ? Math.round(currentWeightKg * 35) : GENERIC_DAILY_WATER_ML_TARGET,
     },
     explanations: {
       nutrition: nutritionExplanations,
@@ -342,11 +345,12 @@ export function validateStrategyPlan(plan: StrategyPlan, ctx: StrategyPlannerCon
 
 export type DailyFocus = {
   headline: string;
-  icon: 'battery-charging' | 'activity' | 'zap';
+  icon: 'battery-charging' | 'activity' | 'zap' | 'droplet' | 'moon';
   // 'nutrition' es la única donde el caller puede sustituir `headline` por
   // la frase real del Insight Engine (con IA) si la tiene — este motor no
-  // sabe nada de eso, solo decide que hoy toca hablar de comida.
-  domain: 'recovery' | 'training' | 'nutrition';
+  // sabe nada de eso, solo decide que hoy toca hablar de comida. 'wellness'
+  // es agua/sueño/pasos — nunca se sustituye, el headline ya es el final.
+  domain: 'recovery' | 'training' | 'nutrition' | 'wellness';
 };
 
 export type DailyFocusInput = {
@@ -355,10 +359,28 @@ export type DailyFocusInput = {
   sessionLabel: string | null;
   kcalPct: number; // status.pct.kcal del día (0-1+, ver nutrition-engine.ts)
   proteinPct: number; // status.pct.protein_g del día
+  // Opcionales — si no se pasan (todavía no se ha registrado nada hoy/anoche),
+  // esos chequeos simplemente no aplican, no se inventa un aviso.
+  sleepHoursLastNight?: number | null;
+  waterMlToday?: number | null;
+  waterMlTarget?: number;
+  stepsToday?: number | null;
+  stepsTarget?: number;
 };
 
 export function computeDailyFocus(input: DailyFocusInput): DailyFocus {
-  const { readiness, hasSessionToday, sessionLabel, kcalPct, proteinPct } = input;
+  const {
+    readiness,
+    hasSessionToday,
+    sessionLabel,
+    kcalPct,
+    proteinPct,
+    sleepHoursLastNight,
+    waterMlToday,
+    waterMlTarget,
+    stepsToday,
+    stepsTarget,
+  } = input;
 
   // 1. Fatigado + entreno pendiente — la seguridad va antes que el plan.
   if (readiness === 'fatigued' && hasSessionToday) {
@@ -369,7 +391,17 @@ export function computeDailyFocus(input: DailyFocusInput): DailyFocus {
     };
   }
 
-  // 2. Entreno pendiente (sin fatiga) — es lo más importante del día.
+  // 2. Muy poco sueño anoche — importa tanto en día de descanso como de
+  // entreno, por eso va antes de mirar si hay sesión pendiente.
+  if (sleepHoursLastNight != null && sleepHoursLastNight < 5) {
+    return {
+      headline: 'Dormiste poco anoche — hoy es buen día para priorizar descansar bien esta noche.',
+      icon: 'moon',
+      domain: 'wellness',
+    };
+  }
+
+  // 3. Entreno pendiente (sin fatiga) — es lo más importante del día.
   if (hasSessionToday) {
     return {
       headline: `Hoy toca ${sessionLabel} — es lo más importante que tienes por delante.`,
@@ -378,7 +410,7 @@ export function computeDailyFocus(input: DailyFocusInput): DailyFocus {
     };
   }
 
-  // 3. Sin entreno hoy — el foco pasa a nutrición.
+  // 4. Sin entreno hoy — el foco pasa a nutrición.
   if (proteinPct < 0.5) {
     return { headline: 'Vas bajo de proteína hoy — una comida con más proteína te acerca al objetivo.', icon: 'zap', domain: 'nutrition' };
   }
@@ -389,6 +421,16 @@ export function computeDailyFocus(input: DailyFocusInput): DailyFocus {
     return { headline: 'Llevas pocas calorías registradas hoy — no te olvides de comer bien.', icon: 'zap', domain: 'nutrition' };
   }
 
-  // 4. Nada urgente — sigue siendo sobre comida, no un genérico vacío.
+  // 5. Nutrición ya va bien — mira si vas muy bajo de agua.
+  if (waterMlToday != null && waterMlTarget != null && waterMlTarget > 0 && waterMlToday < waterMlTarget * 0.3) {
+    return { headline: 'Vas bajo de agua hoy — un vaso ahora te acerca a tu objetivo del día.', icon: 'droplet', domain: 'wellness' };
+  }
+
+  // 6. Todo lo demás bien — último chequeo, pasos muy bajos.
+  if (stepsToday != null && stepsTarget != null && stepsTarget > 0 && stepsToday < stepsTarget * 0.3) {
+    return { headline: 'Vas bajo de pasos hoy — un paseo corto ya suma para tu objetivo.', icon: 'activity', domain: 'wellness' };
+  }
+
+  // 7. Nada urgente — sigue siendo sobre comida, no un genérico vacío.
   return { headline: 'Vas bien encaminado con tus macros de hoy — sigue así.', icon: 'zap', domain: 'nutrition' };
 }

@@ -418,9 +418,18 @@ De lo que no depende de nada más a lo que depende de otras piezas:
      construye en otra sesión, no es parte de este chat del
      Recommendation Engine.
 7. [x] **Tracking de agua/sueño/pasos (2026-08-01)** — construido, ver sección
-   dedicada más abajo. Sigue pendiente el siguiente paso: que estos targets
-   dejen de ser genéricos fijos y el Strategy Planner los compare contra lo
-   registrado de verdad.
+   dedicada más abajo.
+   - [x] **Conectado al motor (2026-08-01)** —
+     `lib/engine/recommendation-engine.ts`: el objetivo de agua ya no era
+     genérico del todo (se le había quedado fuera al Strategy Planner);
+     ahora se calcula por peso corporal (~35ml/kg), genérico fijo solo si
+     todavía no sabemos el peso. Sueño y pasos siguen como recomendación
+     general (8h, 8000 pasos) — no hay con qué personalizar el número en
+     sí sin más datos, pero `computeDailyFocus` ("foco de hoy" en Today)
+     ya compara los tres contra lo registrado de verdad: sueño muy bajo
+     anoche, agua muy baja hoy o pasos muy bajos hoy pueden ser el aviso
+     destacado, con prioridad por debajo de fatiga/entreno pendiente pero
+     por encima del genérico de nutrición sin más.
 8. **Adaptación dinámica** — replanteo automático limitado (máx. 1/semana),
    necesita datos reales de adherencia fluyendo (workout/comidas →
    `Adherence` del User Model, ya pendiente aparte) más lo del paso 7.

@@ -14,7 +14,8 @@ import { fetchProfile } from '../../lib/data/profile';
 import { fetchMesocycles, fetchMesocycleDetail, fetchRecentSessionFeedback } from '../../lib/data/workout';
 import { getSessionDef } from '../../lib/engine/workout-engine';
 import { evaluateRecovery, RecoveryEvaluation } from '../../lib/engine/recovery-engine';
-import { computeDailyFocus } from '../../lib/engine/recommendation-engine';
+import { computeDailyFocus, GENERIC_DAILY_STEPS_TARGET, GENERIC_DAILY_WATER_ML_TARGET } from '../../lib/engine/recommendation-engine';
+import { fetchTodayTracking, TodayTracking } from '../../lib/data/tracking';
 import { Meal, MacroGoals } from '../../lib/engine/types';
 import { QuestionCard } from '../../features/profile/QuestionCard';
 import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
@@ -47,20 +48,23 @@ export default function TodayScreen() {
   const [nutritionLine, setNutritionLine] = useState<string | null>(null);
   const [recovery, setRecovery] = useState<RecoveryEvaluation | null>(null);
   const [macroGoals, setMacroGoals] = useState<MacroGoals>(DEFAULT_GOALS);
+  const [tracking, setTracking] = useState<TodayTracking | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [profile, todaysMeals, mesos, recentFeedback, savedGoal] = await Promise.all([
+      const [profile, todaysMeals, mesos, recentFeedback, savedGoal, todayTracking] = await Promise.all([
         fetchProfile(userId).catch(() => null),
         fetchMealsForDate(),
         fetchMesocycles(userId).catch(() => []),
         fetchRecentSessionFeedback(userId).catch(() => []),
         fetchCurrentMacroGoal(userId).catch(() => null),
+        fetchTodayTracking(userId).catch(() => null),
       ]);
       setName(profile?.name || null);
       setMeals(todaysMeals);
       setRecovery(evaluateRecovery(recentFeedback));
+      setTracking(todayTracking);
       const goals = savedGoal ?? DEFAULT_GOALS;
       setMacroGoals(goals);
 
@@ -119,6 +123,11 @@ export default function TodayScreen() {
     sessionLabel: nextSession?.dayLabel ?? null,
     kcalPct: status.pct.kcal,
     proteinPct: status.pct.protein_g,
+    sleepHoursLastNight: tracking?.sleepHours ?? null,
+    waterMlToday: tracking?.waterMl ?? null,
+    waterMlTarget: GENERIC_DAILY_WATER_ML_TARGET,
+    stepsToday: tracking?.steps ?? null,
+    stepsTarget: GENERIC_DAILY_STEPS_TARGET,
   });
   // Cuando el foco de hoy es nutrición, se usa la frase real del Insight
   // Engine (con IA, ya cacheada) en vez de la genérica del motor — no se

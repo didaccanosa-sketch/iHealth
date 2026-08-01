@@ -20,6 +20,17 @@ Format:
 
 ---
 
+## 2026-08-01 (paso 7 — motor conectado a agua/sueño/pasos)
+- `StrategyPlan.water.dailyMlTarget` now scales with body weight
+  (~35ml/kg) instead of always being the fixed generic —
+  `lib/engine/recommendation-engine.ts`. Sleep/steps targets stay generic
+  (no personalization formula for those yet).
+- `computeDailyFocus` gained optional inputs (`sleepHoursLastNight`,
+  `waterMlToday`/`waterMlTarget`, `stepsToday`/`stepsTarget`) and a new
+  `domain: 'wellness'` (never gets overridden by the nutrition insight
+  line, unlike `'nutrition'`). Today screen now fetches
+  `fetchTodayTracking` and feeds it in.
+
 ## 2026-08-01 (paso 6 — capa de IA: redacción, sin Goal Chat)
 - `StrategyPlan.explanations` changed shape: was `string[]`, now
   `{ nutrition: string[]; training: string[] }` (same split applied to
