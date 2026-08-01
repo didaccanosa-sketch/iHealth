@@ -29,6 +29,37 @@ export async function fetchMealsForDateRange(fromDate: string, toDate: string): 
   return (data as Meal[]) || [];
 }
 
+// ─── OBJETIVO DE MACROS ─────────────────────────────────────────────────────
+// Histórico por fecha (ver schema.sql) — nunca se edita una fila, cada cambio
+// de objetivo inserta una nueva. "El objetivo actual" es siempre la más reciente.
+
+export async function fetchCurrentMacroGoal(userId: string): Promise<MacroGoals | null> {
+  const { data, error } = await supabase
+    .from('macro_goals')
+    .select('kcal, protein_g, carbs_g, fat_g, fiber_g')
+    .eq('user_id', userId)
+    .order('set_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as MacroGoals) || null;
+}
+
+export async function saveMacroGoal(
+  userId: string,
+  goal: MacroGoals,
+  source: 'manual' | 'recommendation_engine' = 'manual'
+): Promise<MacroGoals> {
+  const { data, error } = await supabase
+    .from('macro_goals')
+    .insert({ ...goal, user_id: userId, source })
+    .select('kcal, protein_g, carbs_g, fat_g, fiber_g')
+    .single();
+  if (error) throw error;
+  return data as MacroGoals;
+}
+
 export type NewMeal = {
   description: string;
   kcal: number;

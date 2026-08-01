@@ -58,6 +58,28 @@ alter table meals enable row level security;
 drop policy if exists "meals: all own" on meals;
 create policy "meals: all own" on meals for all using (auth.uid() = user_id);
 
+-- ─── OBJETIVO DE MACROS (paso 3 del Recommendation Engine, ver TODO.md) ───────
+-- Histórico por fecha, no un valor único mutable — así se puede cruzar más
+-- adelante un cambio de objetivo con un cambio de ritmo en Progress. El
+-- objetivo "actual" es siempre la fila más reciente (fetchCurrentMacroGoal).
+create table if not exists macro_goals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  kcal numeric not null,
+  protein_g numeric not null,
+  carbs_g numeric not null,
+  fat_g numeric not null,
+  fiber_g numeric not null,
+  source text default 'manual' check (source in ('manual','recommendation_engine')),
+  set_at date not null default current_date,
+  created_at timestamptz default now()
+);
+
+alter table macro_goals enable row level security;
+drop policy if exists "macro_goals: all own" on macro_goals;
+create policy "macro_goals: all own" on macro_goals for all using (auth.uid() = user_id);
+grant select, insert, update, delete on macro_goals to authenticated, anon;
+
 -- ─── AGUA ────────────────────────────────────────────────────────────────────
 create table if not exists water_logs (
   id uuid primary key default gen_random_uuid(),

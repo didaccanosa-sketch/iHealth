@@ -7,14 +7,14 @@ import { Card } from '../../components/Card';
 import { useAppTheme } from '../../lib/theme-context';
 import { useAuth } from '../../lib/auth-context';
 import { spacing, radius } from '../../constants/theme';
-import { fetchMealsForDate, fetchMealsForDateRange, getNutritionInsight } from '../../lib/data/nutrition';
+import { fetchMealsForDate, fetchMealsForDateRange, fetchCurrentMacroGoal, getNutritionInsight } from '../../lib/data/nutrition';
 import { computeMacroStatus, DEFAULT_GOALS, nutritionCoachLine } from '../../lib/engine/nutrition-engine';
 import { groupMealsByDate } from '../../lib/engine/nutritionInsight';
 import { fetchProfile } from '../../lib/data/profile';
 import { fetchMesocycles, fetchMesocycleDetail, fetchRecentSessionFeedback } from '../../lib/data/workout';
 import { getSessionDef } from '../../lib/engine/workout-engine';
 import { evaluateRecovery, RecoveryEvaluation } from '../../lib/engine/recovery-engine';
-import { Meal } from '../../lib/engine/types';
+import { Meal, MacroGoals } from '../../lib/engine/types';
 import { QuestionCard } from '../../features/profile/QuestionCard';
 import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
 
@@ -44,23 +44,27 @@ export default function TodayScreen() {
   const [hasActiveMeso, setHasActiveMeso] = useState(false);
   const [nutritionLine, setNutritionLine] = useState<string | null>(null);
   const [recovery, setRecovery] = useState<RecoveryEvaluation | null>(null);
+  const [macroGoals, setMacroGoals] = useState<MacroGoals>(DEFAULT_GOALS);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [profile, todaysMeals, mesos, recentFeedback] = await Promise.all([
+      const [profile, todaysMeals, mesos, recentFeedback, savedGoal] = await Promise.all([
         fetchProfile(userId).catch(() => null),
         fetchMealsForDate(),
         fetchMesocycles(userId).catch(() => []),
         fetchRecentSessionFeedback(userId).catch(() => []),
+        fetchCurrentMacroGoal(userId).catch(() => null),
       ]);
       setName(profile?.name || null);
       setMeals(todaysMeals);
       setRecovery(evaluateRecovery(recentFeedback));
+      const goals = savedGoal ?? DEFAULT_GOALS;
+      setMacroGoals(goals);
 
       // Frase de reglas fijas al instante, para que Today no se quede en
       // blanco mientras llega (o no) la del Insight Engine con IA.
-      const fallbackLine = nutritionCoachLine(computeMacroStatus(todaysMeals, DEFAULT_GOALS));
+      const fallbackLine = nutritionCoachLine(computeMacroStatus(todaysMeals, goals));
       setNutritionLine(fallbackLine);
 
       const active = mesos.find((m) => m.started && !m.finished);
@@ -80,7 +84,7 @@ export default function TodayScreen() {
       const threeDaysAgoStr = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       fetchMealsForDateRange(threeDaysAgoStr, todayStr)
         .then((recentMeals) =>
-          getNutritionInsight(userId, todaysMeals, groupMealsByDate(recentMeals), DEFAULT_GOALS, fallbackLine)
+          getNutritionInsight(userId, todaysMeals, groupMealsByDate(recentMeals), goals, fallbackLine)
         )
         .then((result) => setNutritionLine(result.line))
         .catch(() => {
@@ -98,7 +102,7 @@ export default function TodayScreen() {
     }, [load])
   );
 
-  const status = computeMacroStatus(meals, DEFAULT_GOALS);
+  const status = computeMacroStatus(meals, macroGoals);
   const nutritionWord = status.pct.kcal >= 0.9 && status.pct.kcal <= 1.1 ? 'On track' : status.pct.kcal < 0.5 ? 'Just getting started' : status.pct.kcal > 1.15 ? 'Over target' : 'Almost there';
   const nutritionColor = nutritionWord === 'On track' ? colors.success : nutritionWord === 'Over target' ? colors.warning : colors.accent;
 

@@ -18,12 +18,13 @@ import { MacroBar } from '../../components/MacroBar';
 import { useAppTheme } from '../../lib/theme-context';
 import { useAuth } from '../../lib/auth-context';
 import { radius, spacing } from '../../constants/theme';
-import { Meal } from '../../lib/engine/types';
+import { Meal, MacroGoals } from '../../lib/engine/types';
 import { computeMacroStatus, DEFAULT_GOALS, nutritionCoachLine } from '../../lib/engine/nutrition-engine';
 import { groupMealsByDate } from '../../lib/engine/nutritionInsight';
 import {
   fetchMealsForDate,
   fetchMealsForDateRange,
+  fetchCurrentMacroGoal,
   getNutritionInsight,
   insertMeal,
   updateMeal,
@@ -60,6 +61,7 @@ export default function NutritionScreen() {
   const [savingDayTemplate, setSavingDayTemplate] = useState(false);
   const [dayTemplateName, setDayTemplateName] = useState('');
   const [nutritionLine, setNutritionLine] = useState<string | null>(null);
+  const [macroGoals, setMacroGoals] = useState<MacroGoals>(DEFAULT_GOALS);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,17 +72,20 @@ export default function NutritionScreen() {
       setTemplates(tmpl);
       const dayTmpl = await fetchDayTemplates(userId);
       setDayTemplates(dayTmpl);
+      const savedGoal = await fetchCurrentMacroGoal(userId).catch(() => null);
+      const goals = savedGoal ?? DEFAULT_GOALS;
+      setMacroGoals(goals);
 
       // Frase de reglas fijas al instante; el Insight Engine con IA la sustituye
       // en segundo plano si responde a tiempo (mismo patrón que Today).
-      const fallbackLine = nutritionCoachLine(computeMacroStatus(data, DEFAULT_GOALS));
+      const fallbackLine = nutritionCoachLine(computeMacroStatus(data, goals));
       setNutritionLine(fallbackLine);
 
       const todayStr = new Date().toISOString().slice(0, 10);
       const threeDaysAgoStr = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       fetchMealsForDateRange(threeDaysAgoStr, todayStr)
         .then((recentMeals) =>
-          getNutritionInsight(userId, data, groupMealsByDate(recentMeals), DEFAULT_GOALS, fallbackLine)
+          getNutritionInsight(userId, data, groupMealsByDate(recentMeals), goals, fallbackLine)
         )
         .then((result) => setNutritionLine(result.line))
         .catch(() => {
@@ -98,7 +103,7 @@ export default function NutritionScreen() {
     }, [load])
   );
 
-  const status = computeMacroStatus(meals, DEFAULT_GOALS);
+  const status = computeMacroStatus(meals, macroGoals);
   const bySlot = groupBySlot(meals);
   const nextSlot = bySlot.length ? Math.max(...bySlot.map((g) => g.slot)) + 1 : 1;
 

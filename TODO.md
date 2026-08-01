@@ -242,18 +242,32 @@ fallback a reglas fijas si falla. La IA nunca decide, solo redacta.
 
 ### Orden de construcción (2026-08-01)
 De lo que no depende de nada más a lo que depende de otras piezas:
-1. **Strategy Planner puro** — sin Supabase ni IA. Recibe Goal Engine +
-   User Model, devuelve el set completo de targets (calorías, macros,
-   fibra, comidas/día, frecuencia de entreno, prioridades de volumen,
-   cardio/semana, prioridad de recuperación, objetivo de sueño, objetivo
-   de pasos). No necesita que exista tracking de sueño/pasos todavía —
-   eso hace falta para *medir* adherencia al target, no para proponerlo.
-2. **Validation** — reglas de coherencia sobre el output del paso 1 (ej.
-   principiante + volumen avanzado, entreno + calorías incompatibles).
-   También puro, se apoya directo en el paso 1.
-3. **Persistencia del objetivo de macros** — tabla/campo por usuario que
-   falta en Nutrition (hoy es un valor fijo). Bloquea que la entrada
-   Nutrition tenga dónde guardar lo que proponga el motor.
+1. [x] **Strategy Planner puro (2026-08-01)** — `lib/engine/recommendation-engine.ts`,
+   `computeStrategyPlan()`. Sin Supabase ni IA. Recibe Goal Engine + User
+   Model (ya desenvuelto, no el `UserModelData` en bruto), devuelve el set
+   completo de targets: calorías/macros (Mifflin-St Jeor + ajuste por
+   objetivo), comidas/día, frecuencia de entreno, fase, cardio/semana
+   (con ajuste si `readiness === 'fatigued'`), y sueño/pasos como
+   genéricos fijos por ahora (8h / 8000 pasos, sin personalizar todavía).
+   Prioridad de volumen por grupo muscular queda fuera a propósito — no
+   había con qué decidirla sin inventar precisión. Cada número trae su
+   explicación en texto plano (`explanations`).
+2. [x] **Validation (2026-08-01)** — `validateStrategyPlan()`, mismo
+   archivo. Suelo calórico absoluto (1200 kcal), suelo más alto si hay
+   ≥5 entrenos/semana (1500 kcal), tope de días/semana para principiante
+   con <6 meses entrenando (máx. 4). Ningún ajuste es silencioso — todos
+   quedan en `conflicts` y se añaden a `explanations`.
+3. [x] **Persistencia del objetivo de macros (2026-08-01)** — tabla
+   `macro_goals` nueva en `schema.sql` (histórico por fecha, RLS+grants
+   igual que las demás), `fetchCurrentMacroGoal`/`saveMacroGoal` en
+   `lib/data/nutrition.ts`. `index.tsx` y `nutrition.tsx` ya cargan el
+   objetivo guardado del usuario y caen a `DEFAULT_GOALS` solo si no
+   existe ninguno todavía (**pendiente: ejecutar la tabla nueva contra
+   Supabase**, como con las demás). Sigue sin haber UI para guardar un
+   objetivo — de momento nadie inserta filas, así que en la práctica
+   sigue usando el genérico hasta el paso 4. Pendiente de decidir (no
+   resuelto en este paso): ¿se puede editar el objetivo a mano además de
+   por el motor?
 4. **Delegación real** — conectar el output del paso 1 con Workout Engine
    (crear mesociclo) y Nutrition Engine (ya con el paso 3 hecho). El
    motor empieza a ser usable de verdad para las entradas Nutrition y
@@ -280,13 +294,13 @@ Los pasos 1 y 2 son los únicos sin ninguna dependencia — punto de partida.
 ### Entrada Nutrition — falta la pieza base, no es un rediseño
 Hoy `DEFAULT_GOALS` (`lib/engine/nutrition-engine.ts`) es una constante
 fija (2900 kcal / 155g proteína) importada tal cual en `nutrition.tsx` e
-`index.tsx` — **no hay objetivo de macros persistido por usuario en
-ningún sitio**, ni tabla ni campo. Hace falta:
-- [ ] Tabla/campo nuevo para el objetivo de macros por usuario (con
-      fecha, no solo el valor actual — para poder correlacionar después
-      cambios de objetivo con cambios de ritmo en Progress)
-- [ ] Sustituir `DEFAULT_GOALS` en los dos sitios que lo usan por "cargar
-      el objetivo del usuario, caer al genérico solo si no existe aún"
+`index.tsx`. **Resuelto (2026-08-01)**, ver paso 3 del "Orden de
+construcción" más arriba:
+- [x] Tabla `macro_goals` (con fecha, no solo el valor actual — para
+      poder correlacionar después cambios de objetivo con cambios de
+      ritmo en Progress). **Pendiente: ejecutar contra Supabase.**
+- [x] `nutrition.tsx` e `index.tsx` cargan el objetivo del usuario, caen
+      al genérico solo si no existe aún
 - [ ] Pendiente de decidir: ¿se puede editar el objetivo a mano, o solo
       recalcularlo pidiéndoselo al motor? (equivalente al "empezar desde
       cero" manual que ya existe en Workout)
