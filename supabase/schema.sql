@@ -24,22 +24,6 @@ create policy "profiles: update own" on profiles for update using (auth.uid() = 
 drop policy if exists "profiles: insert own" on profiles;
 create policy "profiles: insert own" on profiles for insert with check (auth.uid() = id);
 
--- ─── OBJETIVO (Goal Engine) ──────────────────────────────────────────────────
-create table if not exists goals (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references profiles(id) on delete cascade not null,
-  current_weight_kg numeric,
-  target_weight_kg numeric,
-  target_date date,
-  goal_type text check (goal_type in ('perder_grasa','ganar_musculo','mantener','rendimiento')),
-  active boolean default true,
-  created_at timestamptz default now()
-);
-
-alter table goals enable row level security;
-drop policy if exists "goals: all own" on goals;
-create policy "goals: all own" on goals for all using (auth.uid() = user_id);
-
 -- ─── PESO ────────────────────────────────────────────────────────────────────
 create table if not exists weight_logs (
   id uuid primary key default gen_random_uuid(),

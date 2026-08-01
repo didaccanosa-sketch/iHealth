@@ -39,19 +39,39 @@
 
 ## User Model Engine — v1 construido (2026-08-01)
 - [x] Tabla `user_model` (jsonb, status unknown/confirmed), motor en
-      `features/profile/engine/` (tipos, get/setField, Question Engine
-      declarativo con preguntas para goals/training/nutrition/lifestyle),
-      pantalla `app/profile.tsx` para Identity (age/sex/height/starting
-      weight, editable a mano), y tarjeta de una pregunta a la vez
-      incrustada en Today. Detalle completo en `docs/USER_MODEL.md`.
+      `features/profile/engine/` (tipos, get/setField/revertField, Question
+      Engine declarativo con preguntas para goals/training/nutrition/
+      lifestyle). Detalle completo en `docs/USER_MODEL.md`.
       Categorías Body/Motivation/Preferences/Health quedan definidas pero
       vacías (Health pendiente de una decisión aparte, dato sensible).
       Adherence se añadió a las categorías con contenido (se infiere del
       comportamiento — el enganche real a workout/nutrition engine para
       que se autorellene queda pendiente, no era parte de esta pasada).
+- [x] Tres tipos de respuesta: `single_choice` (opciones fijas, sin
+      ambigüedad — ej. equipo tiene "depende del día / mix" en vez de
+      texto libre), `number` (input numérico, ej. peso objetivo) y `text`
+      (libre, solo para lo genuinamente abierto: lesiones, alergias). Las
+      de tipo `text` pasan por una función nueva con IA
+      (`supabase/functions/analyze-profile-answer`, mismo patrón que
+      `analyze-meal`) que las normaliza en tags limpios; si falla o no
+      está desplegada, se guarda tal cual separado por comas como
+      respaldo. **Pendiente: desplegarla** (`supabase functions deploy
+      analyze-profile-answer`) — hasta entonces solo usa el respaldo.
+- [x] Tarjeta de progressive profiling movida al final de Today, fina y
+      compacta, con flecha atrás (deshace la última respuesta, incluida
+      la posibilidad de deshacer un salto) y flecha adelante (salta la
+      pregunta actual sin confirmarla). Historial solo en memoria de la
+      sesión, no se persiste.
+- [x] `app/profile.tsx`: cabecera con avatar (inicial, sin foto — queda
+      fuera por ahora, necesita Supabase Storage aparte), nombre y
+      apellidos (se sincronizan con `profiles.name` para que el saludo de
+      Today se actualice solo), edad/sexo/altura/peso inicial, y una
+      tarjeta "Settings" con Email/Password/Theme/Log out como
+      placeholders "Coming soon" (ninguno funcional todavía).
 - [ ] Pendiente encima de esto: Goal Chat (onboarding conversacional IA),
       auto-relleno real desde otros engines hacia `user_model`,
-      Recommendation Engine leyéndolo.
+      Recommendation Engine leyéndolo, y el resto de Settings (email,
+      contraseña, logout, tema, foto de perfil).
 
 ## En cola (próximo) — Review de la última actualización (Cardio + Plantillas)
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, Pressable } from 'react-native';
 import { Screen } from '../../components/Screen';
 import { Card } from '../../components/Card';
+import { GoalCard } from '../../components/goal/GoalCard';
 import { useAppTheme } from '../../lib/theme-context';
 import { useAuth } from '../../lib/auth-context';
 import { radius } from '../../constants/theme';
@@ -12,9 +13,10 @@ export default function ProgressScreen() {
 
   return (
     <Screen title="Progress">
+      <GoalCard />
       <Card>
         <Text style={{ color: colors.text2, fontSize: 13, lineHeight: 19 }}>
-          Next: goal setting, weight trend, ETA prediction, body photos.
+          Próximo: fotos corporales, más módulos conectados al Goal Engine (cardio, movilidad).
         </Text>
       </Card>
       <Card>

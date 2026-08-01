@@ -31,12 +31,19 @@ export type IdentityModel = {
 };
 
 // ─── GOALS ──────────────────────────────────────────────────────────────────
-export type GoalType = 'lose_fat' | 'gain_muscle' | 'maintain' | 'performance';
+// Cada tipo determina qué métrica observa el Goal Engine (ver
+// lib/engine/goal-engine.ts, GOAL_METRICS): peso para lose_fat/gain_muscle,
+// 1RM estimado para strength, y stamina/mobility quedan definidos pero sin
+// fuente de datos real todavía (Cardio v2 / tracking de movilidad, piezas
+// aparte) — el motor responde "insufficient_data" para esos hasta entonces.
+export type GoalType = 'lose_fat' | 'gain_muscle' | 'maintain' | 'strength' | 'stamina' | 'mobility';
 
 export type GoalsModel = {
   type: Field<GoalType>;
-  targetWeightKg: Field<number>;
-  targetDate: Field<string>; // ISO date
+  targetWeightKg: Field<number>; // solo lose_fat / gain_muscle
+  targetDate: Field<string>; // ISO date, opcional para cualquier tipo
+  targetExercise: Field<string>; // solo strength — qué ejercicio
+  targetExerciseKg: Field<number>; // solo strength — 1RM estimado objetivo
 };
 
 // ─── TRAINING ───────────────────────────────────────────────────────────────
@@ -124,6 +131,8 @@ export function createEmptyUserModel(): UserModelData {
       type: unknownField(),
       targetWeightKg: unknownField(),
       targetDate: unknownField(),
+      targetExercise: unknownField(),
+      targetExerciseKg: unknownField(),
     },
     training: {
       experience: unknownField(),
