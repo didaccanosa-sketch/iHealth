@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
+import { View, Text, Pressable, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { Card } from '../Card';
 import { FadeIn } from '../FadeIn';
@@ -9,6 +9,7 @@ import { MuscleGroup, Level, Phase } from '../../lib/engine/types';
 import { MUSCLE_GROUPS, analyzeSplit, explainFocusChoices } from '../../lib/engine/workout-engine';
 import { EXERCISE_DB } from '../../lib/engine/exercise-db';
 import { NewMesoInput } from '../../lib/data/workout';
+import { explainRecommendation } from '../../lib/data/recommendation';
 
 type WizardDay = { label: string; exercises: { name: string; muscle_group: MuscleGroup; sets: number; reps: string }[] };
 type WizardForm = {
@@ -74,6 +75,22 @@ export function MesoWizard({
   const [exGroup, setExGroup] = useState<MuscleGroup | null>(null);
   const [query, setQuery] = useState('');
   const [showRecommendInfo, setShowRecommendInfo] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [explaining, setExplaining] = useState(false);
+
+  function toggleRecommendInfo() {
+    const next = !showRecommendInfo;
+    setShowRecommendInfo(next);
+    if (next && initial?.recommendationExplanations && !aiExplanation && !explaining) {
+      setExplaining(true);
+      explainRecommendation('workout', initial.recommendationExplanations)
+        .then(setAiExplanation)
+        .catch(() => {
+          // se queda el fallback de viñetas
+        })
+        .finally(() => setExplaining(false));
+    }
+  }
 
   function goToDays() {
     if (form.days.length !== form.days_per_week) {
@@ -356,7 +373,7 @@ export function MesoWizard({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
               <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>What I think of this routine</Text>
               {initial?.generatedFrom === 'recommendation' && (
-                <Pressable onPress={() => setShowRecommendInfo((v) => !v)} hitSlop={8}>
+                <Pressable onPress={toggleRecommendInfo} hitSlop={8}>
                   <Feather name="info" size={15} color={colors.text2} />
                 </Pressable>
               )}
@@ -364,19 +381,25 @@ export function MesoWizard({
             <Text style={{ color: colors.text2, fontSize: 13, lineHeight: 20 }}>{warnings}</Text>
             {showRecommendInfo && initial?.generatedFrom === 'recommendation' && (
               <View style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, marginTop: 10 }}>
-                {(initial.recommendationExplanations || []).map((line, i) => (
-                  <Text
-                    key={i}
-                    style={{
-                      color: colors.text2,
-                      fontSize: 11,
-                      lineHeight: 16,
-                      marginBottom: i === (initial.recommendationExplanations || []).length - 1 ? 0 : 6,
-                    }}
-                  >
-                    • {line}
-                  </Text>
-                ))}
+                {explaining ? (
+                  <ActivityIndicator size="small" color={colors.accent} />
+                ) : aiExplanation ? (
+                  <Text style={{ color: colors.text2, fontSize: 12, lineHeight: 18 }}>{aiExplanation}</Text>
+                ) : (
+                  (initial.recommendationExplanations || []).map((line, i) => (
+                    <Text
+                      key={i}
+                      style={{
+                        color: colors.text2,
+                        fontSize: 11,
+                        lineHeight: 16,
+                        marginBottom: i === (initial.recommendationExplanations || []).length - 1 ? 0 : 6,
+                      }}
+                    >
+                      • {line}
+                    </Text>
+                  ))
+                )}
               </View>
             )}
           </Card>

@@ -284,7 +284,7 @@ export default function TrainingScreen() {
         days_per_week: plan.training.daysPerWeek,
         days: buildFocusSplit(plan.training.daysPerWeek, []),
         generatedFrom: 'recommendation',
-        recommendationExplanations: plan.explanations,
+        recommendationExplanations: plan.explanations.training,
       });
       setView('wizard');
     } catch (e: any) {

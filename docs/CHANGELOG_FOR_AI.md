@@ -20,6 +20,24 @@ Format:
 
 ---
 
+## 2026-08-01 (paso 6 — capa de IA: redacción, sin Goal Chat)
+- `StrategyPlan.explanations` changed shape: was `string[]`, now
+  `{ nutrition: string[]; training: string[] }` (same split applied to
+  `ValidationResult.conflicts`) — `lib/engine/recommendation-engine.ts`.
+  All explanation/conflict text rewritten in plain Spanish (dropped
+  "TDEE", "Mifflin-St Jeor", "measured/generic" jargon). Any code reading
+  `plan.explanations` as a flat array needs updating to `.nutrition` /
+  `.training`.
+- New `supabase/functions/recommendation-explain` (not deployed yet) +
+  `explainRecommendation(domain, facts)` in `lib/data/recommendation.ts`:
+  AI redaction of the plain-language facts into a natural, personalized
+  paragraph, fetched on-demand (only when the info toggle opens) with no
+  caching. Wired into both the Nutrition proposal card and the Workout
+  wizard's review step.
+- Goal Chat (free-text goal interpretation) was explicitly scoped **out**
+  of this session — full spec written in `TODO.md` under "Goal Chat —
+  diseño" for whichever session builds it next.
+
 ## 2026-08-01 (madrugada — Recommendation Engine, paso 4 completo: entrada Workout)
 - `StrategyPlan.training` gained a `level` field (mapped from
   `Experience`, defaults to `'principiante'`) — computed in

@@ -3,6 +3,7 @@
 // recomendación real. Aquí sí se toca Supabase (a diferencia de
 // lib/engine/recommendation-engine.ts, que es puro) — reúne User Model +
 // Goal Engine + Recovery Engine y se lo pasa al Strategy Planner.
+import { supabase } from '../supabase';
 import { loadUserModel } from '../../features/profile/data/user-model-data';
 import { fetchWeightHistory } from './weight-logs';
 import { fetchStrengthHistory } from './strength-history';
@@ -77,4 +78,17 @@ export async function getStrategyRecommendation(userId: string): Promise<Strateg
   if (!ctx) return null;
   const plan = computeStrategyPlan(ctx);
   return validateStrategyPlan(plan, ctx).plan;
+}
+
+// Redacción con IA (capa de IA, paso 6) — coge los hechos en español sencillo
+// que ya calculó el motor (StrategyPlan.explanations, por dominio) y los
+// convierte en un párrafo natural y personalizado. Nunca inventa datos: la
+// IA solo redacta lo que ya está en `facts`. Si falla (sin red, función no
+// desplegada, cuota...), quien llama debe caer al texto de `facts` tal cual
+// — no se cachea, se pide cada vez que el usuario abre el desplegable de info.
+export async function explainRecommendation(domain: 'nutrition' | 'workout', facts: string[]): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('recommendation-explain', { body: { domain, facts } });
+  if (error) throw error;
+  if (!data?.text) throw new Error('Empty explanation response');
+  return data.text as string;
 }

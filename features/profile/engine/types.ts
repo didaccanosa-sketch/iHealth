@@ -57,6 +57,13 @@ export type TrainingModel = {
   preferredExercises: Field<string[]>;
   dislikedExercises: Field<string[]>;
   injuries: Field<string[]>;
+  preferredSplit: Field<'full_body' | 'split' | 'no_preference'>;
+  warmupHabit: Field<'always' | 'sometimes' | 'rarely'>;
+  favoriteMuscleGroup: Field<string[]>; // texto libre analizado con IA en tags
+  dislikedMuscleGroup: Field<string[]>; // texto libre analizado con IA en tags
+  cardioPreference: Field<'running' | 'cycling' | 'swimming' | 'walking' | 'elliptical' | 'no_preference'>;
+  socialPreference: Field<'solo' | 'group' | 'indifferent'>;
+  pastRoutineDislikes: Field<string[]>; // texto libre analizado con IA en tags
 };
 
 // ─── NUTRITION ──────────────────────────────────────────────────────────────
@@ -67,6 +74,13 @@ export type NutritionModel = {
   dislikedFoods: Field<string[]>;
   allergies: Field<string[]>;
   dietaryPattern: Field<DietaryPattern>;
+  cookingSkill: Field<'basic' | 'medium' | 'advanced'>;
+  cookingTimeAvailable: Field<'low' | 'medium' | 'high'>;
+  eatingOutFrequency: Field<number>; // veces por semana
+  snackingHabit: Field<'yes' | 'no' | 'sometimes'>;
+  preferredCuisine: Field<string[]>; // texto libre analizado con IA en tags
+  mealPrepHabit: Field<'yes' | 'no' | 'sometimes'>;
+  cravings: Field<string[]>; // texto libre analizado con IA en tags
 };
 
 // ─── LIFESTYLE ──────────────────────────────────────────────────────────────
@@ -79,6 +93,11 @@ export type LifestyleModel = {
   sleepHours: Field<number>;
   preferredTrainingTime: Field<TrainingTime>;
   sessionLengthMin: Field<number>;
+  occupation: Field<string>;
+  commuteType: Field<'walking' | 'car' | 'public_transport' | 'bike'>;
+  travelFrequency: Field<'never' | 'sometimes' | 'often'>;
+  weekendRoutineDiffers: Field<boolean>;
+  stressLevel: Field<'low' | 'medium' | 'high'>;
 };
 
 // ─── ADHERENCE — se infiere del comportamiento (sesiones completadas,
@@ -93,15 +112,36 @@ export type AdherenceModel = {
   lastActiveAt: Field<string>; // ISO date
 };
 
-// ─── Categorías definidas pero sin contenido todavía. Se rellenan cuando
-// haya una pieza real que las necesite — Health en particular necesita una
-// decisión aparte por ser dato sensible (no tratarlo como el resto). ────────
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type BodyModel = Record<string, never>;
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type MotivationModel = Record<string, never>;
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type PreferencesModel = Record<string, never>;
+// ─── MOTIVATION — nunca de acción directa en la app, solo de lo que cuenta
+// el usuario; todo lo de texto libre se analiza con IA en tags (mismo
+// patrón que lesiones/alergias) ─────────────────────────────────────────────
+export type AccountabilityPreference = 'daily' | 'weekly' | 'only_when_asked';
+export type ProgressRewardStyle = 'numbers' | 'feeling' | 'challenge';
+
+export type MotivationModel = {
+  mainMotivation: Field<string[]>;
+  biggestObstacle: Field<string[]>;
+  pastSuccessExperience: Field<string[]>;
+  accountabilityPreference: Field<AccountabilityPreference>;
+  progressRewardStyle: Field<ProgressRewardStyle>;
+};
+
+// ─── PREFERENCES — cómo quiere el usuario que la app se comporte con él ────
+export type PreferencesModel = {
+  coachingTone: Field<string[]>; // texto libre analizado con IA en tags
+  unitSystem: Field<'kg' | 'lb'>;
+  reminderTime: Field<'morning' | 'midday' | 'afternoon' | 'evening'>;
+};
+
+// ─── BODY — solo lo estético/estructural que el propio usuario define como
+// objetivo, nada médico (eso sigue en Health, aparte) ────────────────────────
+export type FocusArea = 'legs' | 'arms' | 'abdomen' | 'back' | 'general';
+
+export type BodyModel = {
+  focusArea: Field<FocusArea>;
+};
+
+// ─── HEALTH — sin contenido todavía, dato sensible, decisión aparte ─────────
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type HealthModel = Record<string, never>;
 
@@ -143,12 +183,26 @@ export function createEmptyUserModel(): UserModelData {
       preferredExercises: unknownField(),
       dislikedExercises: unknownField(),
       injuries: unknownField(),
+      preferredSplit: unknownField(),
+      warmupHabit: unknownField(),
+      favoriteMuscleGroup: unknownField(),
+      dislikedMuscleGroup: unknownField(),
+      cardioPreference: unknownField(),
+      socialPreference: unknownField(),
+      pastRoutineDislikes: unknownField(),
     },
     nutrition: {
       mealsPerDay: unknownField(),
       dislikedFoods: unknownField(),
       allergies: unknownField(),
       dietaryPattern: unknownField(),
+      cookingSkill: unknownField(),
+      cookingTimeAvailable: unknownField(),
+      eatingOutFrequency: unknownField(),
+      snackingHabit: unknownField(),
+      preferredCuisine: unknownField(),
+      mealPrepHabit: unknownField(),
+      cravings: unknownField(),
     },
     lifestyle: {
       workType: unknownField(),
@@ -156,6 +210,11 @@ export function createEmptyUserModel(): UserModelData {
       sleepHours: unknownField(),
       preferredTrainingTime: unknownField(),
       sessionLengthMin: unknownField(),
+      occupation: unknownField(),
+      commuteType: unknownField(),
+      travelFrequency: unknownField(),
+      weekendRoutineDiffers: unknownField(),
+      stressLevel: unknownField(),
     },
     adherence: {
       consistencyScore: unknownField(),
@@ -164,13 +223,35 @@ export function createEmptyUserModel(): UserModelData {
       currentStreakDays: unknownField(),
       lastActiveAt: unknownField(),
     },
-    body: {},
-    motivation: {},
-    preferences: {},
+    body: {
+      focusArea: unknownField(),
+    },
+    motivation: {
+      mainMotivation: unknownField(),
+      biggestObstacle: unknownField(),
+      pastSuccessExperience: unknownField(),
+      accountabilityPreference: unknownField(),
+      progressRewardStyle: unknownField(),
+    },
+    preferences: {
+      coachingTone: unknownField(),
+      unitSystem: unknownField(),
+      reminderTime: unknownField(),
+    },
     health: {},
   };
 }
 
-// Categorías con campos reales en v1 (las que puede tocar el Question Engine
-// y la pantalla de Perfil). Las otras 4 están definidas pero vacías.
-export type FilledCategory = 'identity' | 'goals' | 'training' | 'nutrition' | 'lifestyle' | 'adherence';
+// Categorías con campos reales (las que puede tocar el Question Engine y la
+// pantalla de Perfil). Solo Health se queda definida pero vacía (dato
+// sensible, decisión aparte).
+export type FilledCategory =
+  | 'identity'
+  | 'goals'
+  | 'training'
+  | 'nutrition'
+  | 'lifestyle'
+  | 'adherence'
+  | 'motivation'
+  | 'preferences'
+  | 'body';

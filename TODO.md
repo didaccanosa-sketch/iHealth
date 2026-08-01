@@ -79,10 +79,65 @@
       cacheada en el navegador y cualquier escritura nueva violaba la FK
       de `user_id` contra `profiles` — ya se puede cerrar sesión desde la
       propia app en vez de borrar el local storage a mano.
-- [ ] Pendiente encima de esto: Goal Chat (onboarding conversacional IA),
+- [ ] Pendiente encima de esto: Goal Chat (ver sección dedicada más abajo),
       auto-relleno real desde otros engines hacia `user_model`,
       Recommendation Engine leyéndolo, y el resto de Settings (email,
       contraseña, tema, foto de perfil).
+- [x] **Question Engine ampliado (2026-08-01)** — se pasó de 12 a ~42
+      preguntas, porque se agotaban demasiado rápido en la tarjeta de
+      progressive profiling. Categorías **Motivation**, **Preferences** y
+      **Body** dejan de estar vacías y ganan contenido real:
+      `mainMotivation`/`biggestObstacle`/`pastSuccessExperience` (texto
+      libre, analizado con IA en tags, mismo patrón que lesiones/alergias),
+      `accountabilityPreference`/`progressRewardStyle` en Motivation;
+      `unitSystem`/`coachingTone`/`reminderTime` en Preferences; `focusArea`
+      en Body (única zona estética que se pregunta, nada médico — Health
+      sigue aparte y vacía, sin tocar). Se añadieron también preguntas para
+      campos que ya existían en el modelo pero nunca se preguntaban
+      (`goals.targetDate`, `training.preferredExercises`/`dislikedExercises`,
+      `nutrition.dislikedFoods`, `lifestyle.workType`) y campos nuevos de
+      contexto personal no sensible: ocupación, cómo te mueves en el día a
+      día, frecuencia de viajes, si el fin de semana difiere mucho de la
+      semana, nivel de estrés habitual, tiempo/nivel/hábitos de cocina,
+      antojos, tipo de cardio preferido, entrenar solo o acompañado, grupo
+      muscular favorito/evitado, qué no funcionó de una rutina anterior.
+      Deliberadamente fuera por ahora: nada de dinero exacto, "con quién
+      vives" (parecía demasiado personal) y fotos de progreso (ya está
+      previsto aparte, no hacía falta preguntarlo). Solo tipos + preguntas
+      del motor (`features/profile/engine/`) — sin tocar UI, Supabase, ni la
+      función `analyze-profile-answer` (sigue pendiente de desplegar, ver
+      arriba).
+
+## Goal Chat — diseño (2026-08-01), pendiente de construir (sesión aparte)
+Decidido hoy en el chat del Recommendation Engine, pero **se construye en
+otra sesión/chat distinta** — esto es solo la especificación para que esa
+sesión no tenga que redescubrirla.
+
+- **Sustituye a los chips de objetivo**, no convive con ellos. Hoy
+  `GoalCard.tsx` fija el objetivo eligiendo de una lista fija
+  (`GOAL_TYPE_OPTIONS`) + campos sueltos (peso objetivo, ejercicio, fecha).
+  La razón de pasar a texto libre: cualquier matiz nuevo de objetivo con
+  los chips actuales significa añadir más chips/variables sin parar — con
+  texto libre no hace falta anticipar cada caso.
+- **Vive en Today, junto a la tarjeta de objetivo** — no es una pantalla ni
+  un chat aparte navegable, es la forma de fijar/editar el objetivo desde
+  ahí mismo.
+- **Si la IA no puede interpretarlo, no adivina ni cae a los chips**: le
+  dice al usuario que no lo ha entendido y le deja intentarlo de nuevo
+  (reintentar el texto), igual que un malentendido en una conversación
+  real — nunca fija un objetivo a medias o incorrecto en silencio.
+- **Salida esperada de la interpretación**: mismo `GoalType` +
+  `targetWeightKg`/`targetDate`/`targetExercise`/`targetExerciseKg` que ya
+  usa `GoalsModel` (`features/profile/engine/types.ts`) — el texto libre
+  solo cambia cómo se rellenan esos campos, no qué campos existen.
+  Necesita una función nueva en el servidor (mismo patrón de proxy a
+  Anthropic que `analyze-meal`/`analyze-profile-answer`/
+  `recommendation-explain`), que reciba el texto y devuelva JSON
+  estructurado — nunca texto libre suelto guardado tal cual.
+- Sigue aplicando el principio del resto del motor: la IA interpreta/
+  redacta, nunca decide ni calcula — una vez interpretado el objetivo, el
+  resto (Goal Engine, Recommendation Engine) sigue funcionando exactamente
+  igual que ahora, sin saber que vino de un chat en vez de unos chips.
 
 ## Goal Engine — v1 construido (2026-08-01)
 - [x] Motor genérico en `lib/engine/goal-engine.ts` (lógica pura, sin
@@ -333,10 +388,27 @@ De lo que no depende de nada más a lo que depende de otras piezas:
      imagen de referencia (agua, sueño, checklist con anillos, próxima
      comida con foto, tendencia de peso como tarjeta propia) — aparte,
      depende de piezas que no existen todavía (tracking de agua/sueño).
-6. **Capa de IA** — interpretación de objetivo en texto libre (Goal Chat)
-   + funciones de redacción de cada propuesta (mismo patrón que
-   `analyze-meal`). Se añade encima de un motor que ya funciona en
-   determinista, no bloquea nada de lo anterior.
+6. **Capa de IA**:
+   - [x] **Redacción de cada propuesta (2026-08-01)** — nueva función
+     `supabase/functions/recommendation-explain` (mismo patrón proxy que
+     `analyze-meal`/`nutrition-insight`, **pendiente desplegar**:
+     `supabase functions deploy recommendation-explain`). Recibe los
+     hechos en español sencillo que ya calculaba el Strategy Planner
+     (ahora separados por dominio, ver más abajo) y los redacta en un
+     párrafo natural y personalizado — solo se pide al abrir el
+     desplegable de info, no en cada recomendación, y si falla se queda
+     el texto sencillo de siempre. Nutrition solo recibe/explica hechos de
+     nutrición, Workout solo de entreno — nunca mezclados.
+   - [x] **Explicaciones separadas por dominio (2026-08-01)** —
+     `StrategyPlan.explanations` pasó de una lista única a
+     `{ nutrition: string[], training: string[] }`; los conflictos de
+     Validation también se reparten igual. De paso, todo el texto se
+     reescribió en español sencillo (fuera "TDEE", "Mifflin-St Jeor",
+     "measured/generic" tal cual).
+   - [ ] **Interpretación de objetivo en texto libre (Goal Chat)** —
+     diseño cerrado, ver sección dedicada "Goal Chat" más arriba. Se
+     construye en otra sesión, no es parte de este chat del
+     Recommendation Engine.
 7. **Tracking de agua/sueño/pasos** — hace falta antes de que esos
    targets del paso 1 tengan un valor real con el que compararse.
 8. **Adaptación dinámica** — replanteo automático limitado (máx. 1/semana),

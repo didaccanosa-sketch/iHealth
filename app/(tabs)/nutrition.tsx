@@ -42,7 +42,7 @@ import {
   deleteDayTemplate,
   DayTemplate,
 } from '../../lib/data/nutrition';
-import { getStrategyRecommendation } from '../../lib/data/recommendation';
+import { getStrategyRecommendation, explainRecommendation } from '../../lib/data/recommendation';
 import type { StrategyPlan } from '../../lib/engine/recommendation-engine';
 
 export default function NutritionScreen() {
@@ -70,6 +70,8 @@ export default function NutritionScreen() {
   const [recommendModalOpen, setRecommendModalOpen] = useState(false);
   const [applyingRecommendation, setApplyingRecommendation] = useState(false);
   const [showRecommendInfo, setShowRecommendInfo] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [explaining, setExplaining] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -276,6 +278,7 @@ export default function NutritionScreen() {
   async function handleRecommend() {
     setRecommending(true);
     setError(null);
+    setAiExplanation(null);
     try {
       const plan = await getStrategyRecommendation(userId);
       if (!plan) {
@@ -290,6 +293,22 @@ export default function NutritionScreen() {
     setRecommending(false);
   }
 
+  // Se pide solo al abrir el desplegable de info (no en cada recomendación)
+  // — si falla, se queda el texto en español sencillo que ya había.
+  function toggleRecommendInfo() {
+    const next = !showRecommendInfo;
+    setShowRecommendInfo(next);
+    if (next && recommendedPlan && !aiExplanation && !explaining) {
+      setExplaining(true);
+      explainRecommendation('nutrition', recommendedPlan.explanations.nutrition)
+        .then(setAiExplanation)
+        .catch(() => {
+          // se queda el fallback de viñetas, no hace falta avisar de esto
+        })
+        .finally(() => setExplaining(false));
+    }
+  }
+
   async function handleApplyRecommendation() {
     if (!recommendedPlan) return;
     setApplyingRecommendation(true);
@@ -299,6 +318,7 @@ export default function NutritionScreen() {
       setRecommendModalOpen(false);
       setRecommendedPlan(null);
       setShowRecommendInfo(false);
+      setAiExplanation(null);
     } catch (e: any) {
       setError(e.message || 'No se pudo guardar el objetivo, inténtalo de nuevo.');
     }
@@ -578,7 +598,7 @@ export default function NutritionScreen() {
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>Objetivo propuesto</Text>
-              <Pressable onPress={() => setShowRecommendInfo((v) => !v)} hitSlop={8}>
+              <Pressable onPress={toggleRecommendInfo} hitSlop={8}>
                 <Feather name="info" size={15} color={colors.text2} />
               </Pressable>
             </View>
@@ -588,11 +608,20 @@ export default function NutritionScreen() {
 
             {showRecommendInfo && recommendedPlan && (
               <View style={{ backgroundColor: colors.surface2, borderRadius: radius.md, padding: 10, marginBottom: 16 }}>
-                {recommendedPlan.explanations.map((line, i) => (
-                  <Text key={i} style={{ color: colors.text2, fontSize: 11, lineHeight: 16, marginBottom: i === recommendedPlan.explanations.length - 1 ? 0 : 6 }}>
-                    • {line}
-                  </Text>
-                ))}
+                {explaining ? (
+                  <ActivityIndicator size="small" color={colors.accent} />
+                ) : aiExplanation ? (
+                  <Text style={{ color: colors.text2, fontSize: 12, lineHeight: 18 }}>{aiExplanation}</Text>
+                ) : (
+                  recommendedPlan.explanations.nutrition.map((line, i) => (
+                    <Text
+                      key={i}
+                      style={{ color: colors.text2, fontSize: 11, lineHeight: 16, marginBottom: i === recommendedPlan.explanations.nutrition.length - 1 ? 0 : 6 }}
+                    >
+                      • {line}
+                    </Text>
+                  ))
+                )}
               </View>
             )}
 
@@ -628,6 +657,7 @@ export default function NutritionScreen() {
                   setRecommendModalOpen(false);
                   setRecommendedPlan(null);
                   setShowRecommendInfo(false);
+                  setAiExplanation(null);
                 }}
                 disabled={applyingRecommendation}
                 style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: radius.md, padding: 12, alignItems: 'center' }}

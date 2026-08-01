@@ -65,7 +65,15 @@ export type StrategyPlan = {
   steps: {
     dailyStepsTarget: number; // genérico fijo por ahora
   };
-  explanations: string[]; // hechos en texto plano, no redacción de IA — para Validation y UI
+  // Hechos en español sencillo (sin jerga), separados por dominio — cada
+  // pantalla enseña solo lo suyo (Nutrition no ve por qué se ajustó el
+  // cardio, Workout no ve por qué se ajustaron las calorías). No es
+  // redacción de IA, es el respaldo instantáneo/fallback — ver
+  // docs/RECOMMENDATION_ENGINE.md, capa de IA.
+  explanations: {
+    nutrition: string[];
+    training: string[];
+  };
 };
 
 // ─── CONSTANTES (todas documentadas, ninguna mágica sin explicar) ─────────
@@ -156,7 +164,8 @@ function computeBMR(weightKg: number, heightCm: number, ageYears: number, sex: S
 // ─── STRATEGY PLANNER ───────────────────────────────────────────────────
 
 export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
-  const explanations: string[] = [];
+  const nutritionExplanations: string[] = [];
+  const trainingExplanations: string[] = [];
   const { type: goalType, evaluation } = ctx.goal;
   const { ageYears, sex, heightCm, currentWeightKg } = ctx.identity;
 
@@ -171,23 +180,19 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
     const tdee = bmr * activityMultiplier;
     kcal = Math.round(tdee + KCAL_ADJUSTMENT[goalType]);
     proteinG = Math.round(currentWeightKg! * PROTEIN_G_PER_KG[goalType]);
-    explanations.push(
-      `Calorías: TDEE estimado (Mifflin-St Jeor, actividad "${ctx.lifestyle.dailyActivity ?? 'medium (por defecto, sin dato)'}") ${Math.round(
-        tdee
-      )} kcal, ajustado ${KCAL_ADJUSTMENT[goalType] >= 0 ? '+' : ''}${KCAL_ADJUSTMENT[goalType]} kcal según objetivo "${goalType}".`
+    nutritionExplanations.push(
+      'Calculamos tus calorías a partir de tu peso, altura, edad y nivel de actividad, y las subimos o bajamos según tu objetivo.'
     );
   } else {
-    // Sin edad/altura/peso no hay base real para BMR — fallback conservador
-    // en vez de inventar (mismo punto de partida que DEFAULT_GOALS ya usaba
-    // en nutrition-engine.ts), pero el objetivo sigue aplicando su ajuste:
-    // sin esto, el resultado era idéntico pasara lo que pasara el objetivo,
-    // que es justo lo que no debe pasar en un motor que decide por objetivo.
+    // Sin edad/altura/peso no hay base real para calcular — fallback
+    // conservador en vez de inventar (mismo punto de partida que
+    // DEFAULT_GOALS ya usaba en nutrition-engine.ts), pero el objetivo
+    // sigue aplicando su ajuste: sin esto, el resultado era idéntico
+    // pasara lo que pasara el objetivo, que es justo lo que no debe pasar.
     kcal = Math.round(2900 + KCAL_ADJUSTMENT[goalType]);
     proteinG = 155;
-    explanations.push(
-      `Calorías: sin edad/altura/peso suficientes para BMR real — se parte de un genérico (2900 kcal) ajustado ${
-        KCAL_ADJUSTMENT[goalType] >= 0 ? '+' : ''
-      }${KCAL_ADJUSTMENT[goalType]} kcal según objetivo "${goalType}". Rellena tu perfil para un cálculo real.`
+    nutritionExplanations.push(
+      'Todavía no tenemos tu edad, altura o peso, así que partimos de un valor típico y lo ajustamos según tu objetivo. Rellena tu perfil para un cálculo hecho a tu medida.'
     );
   }
 
@@ -198,9 +203,9 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
 
   const daysPerWeek = ctx.training.daysPerWeekPreferred ?? DEFAULT_DAYS_PER_WEEK[goalType];
   if (ctx.training.daysPerWeekPreferred !== null) {
-    explanations.push(`Días de entreno: se respeta la preferencia del usuario (${daysPerWeek}/semana).`);
+    trainingExplanations.push('Usamos los días de entreno que ya tenías guardados.');
   } else {
-    explanations.push(`Días de entreno: sin preferencia guardada, se usa el valor por defecto para "${goalType}" (${daysPerWeek}/semana).`);
+    trainingExplanations.push('No teníamos guardados tus días de entreno preferidos, así que proponemos un número típico para tu objetivo.');
   }
 
   const phase = suggestPhaseForGoal(goalType);
@@ -208,19 +213,21 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
 
   let cardioSessions = DEFAULT_CARDIO_SESSIONS[goalType];
   if (ctx.recovery?.readiness === 'fatigued') {
-    const before = cardioSessions;
     cardioSessions = Math.max(0, cardioSessions - 1);
-    explanations.push(`Cardio: bajado de ${before} a ${cardioSessions} sesiones/semana porque el readiness actual es "fatigued".`);
+    trainingExplanations.push('Bajamos el cardio porque tu cuerpo está pidiendo recuperación estos días.');
+  } else if (cardioSessions === 0) {
+    trainingExplanations.push('Con tu objetivo actual no hace falta añadir cardio aparte.');
   } else {
-    explanations.push(`Cardio: ${cardioSessions} sesiones/semana para objetivo "${goalType}" (rango conservador documentado, sin ajuste de recuperación).`);
+    trainingExplanations.push(`Añadimos ${cardioSessions} sesiones de cardio suave a la semana porque ayuda con tu objetivo.`);
   }
 
   const confidence: StrategyPlan['confidence'] = evaluation?.confidence === 'measured' ? 'measured' : 'generic';
-  explanations.push(
+  const confidenceNote =
     confidence === 'measured'
-      ? 'Confianza: "measured" — el Goal Engine tiene tendencia real medida para este objetivo.'
-      : 'Confianza: "generic" — todavía no hay tendencia real medida, estos targets son un punto de partida razonable, no una medición.'
-  );
+      ? 'Estos números ya tienen en cuenta cómo ha ido evolucionando tu progreso real.'
+      : 'Todavía no hay suficiente historial tuyo, así que esto es un punto de partida razonable — se irá afinando con el tiempo.';
+  nutritionExplanations.push(confidenceNote);
+  trainingExplanations.push(confidenceNote);
 
   return {
     confidence,
@@ -246,7 +253,10 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
     steps: {
       dailyStepsTarget: GENERIC_DAILY_STEPS_TARGET,
     },
-    explanations,
+    explanations: {
+      nutrition: nutritionExplanations,
+      training: trainingExplanations,
+    },
   };
 }
 
@@ -257,7 +267,7 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
 
 export type ValidationResult = {
   plan: StrategyPlan;
-  conflicts: string[];
+  conflicts: { nutrition: string[]; training: string[] };
 };
 
 // Recalcula grasa/carbohidratos con las mismas fórmulas del Strategy
@@ -270,34 +280,32 @@ function recomputeFatAndCarbs(kcal: number, proteinG: number): { fat_g: number; 
 }
 
 export function validateStrategyPlan(plan: StrategyPlan, ctx: StrategyPlannerContext): ValidationResult {
-  const conflicts: string[] = [];
+  const nutritionConflicts: string[] = [];
+  const trainingConflicts: string[] = [];
   let nutrition = { ...plan.nutrition };
   let training = { ...plan.training };
 
   const applyKcalFloor = (floor: number, reason: string) => {
     if (nutrition.kcal < floor) {
-      conflicts.push(`Kcal ajustadas de ${nutrition.kcal} a ${floor} — ${reason}.`);
+      nutritionConflicts.push(`Subimos tus calorías a ${floor} kcal — ${reason}.`);
       nutrition = { ...nutrition, kcal: floor, ...recomputeFatAndCarbs(floor, nutrition.protein_g) };
     }
   };
 
   // 1. Suelo calórico absoluto.
-  applyKcalFloor(MIN_SAFE_KCAL, `por debajo del mínimo seguro (${MIN_SAFE_KCAL} kcal)`);
+  applyKcalFloor(MIN_SAFE_KCAL, 'el número calculado era demasiado bajo para ser seguro');
 
   // 2. Suelo más alto si hay mucha carga de entreno (ej. 5 días/semana con
   // 1200 kcal no es viable, aunque 1200 solo ya pase el chequeo anterior).
   if (training.daysPerWeek >= HIGH_FREQUENCY_DAYS_PER_WEEK) {
-    applyKcalFloor(
-      MIN_SAFE_KCAL_HIGH_FREQUENCY,
-      `insuficiente para ${training.daysPerWeek} entrenos/semana (mínimo ${MIN_SAFE_KCAL_HIGH_FREQUENCY} kcal con esa frecuencia)`
-    );
+    applyKcalFloor(MIN_SAFE_KCAL_HIGH_FREQUENCY, `con ${training.daysPerWeek} entrenos a la semana hacía falta más margen`);
   }
 
   // 3. Principiante con pocos meses entrenando — tope de días/semana.
   const isNewBeginner = ctx.training.experience === 'beginner' && (ctx.training.trainingMonths ?? 0) < NEW_BEGINNER_MAX_MONTHS;
   if (isNewBeginner && training.daysPerWeek > MAX_DAYS_PER_WEEK_NEW_BEGINNER) {
-    conflicts.push(
-      `Días de entreno ajustados de ${training.daysPerWeek} a ${MAX_DAYS_PER_WEEK_NEW_BEGINNER} — principiante con menos de ${NEW_BEGINNER_MAX_MONTHS} meses entrenando.`
+    trainingConflicts.push(
+      `Bajamos tus días de entreno a ${MAX_DAYS_PER_WEEK_NEW_BEGINNER} a la semana — al llevar poco tiempo entrenando, mejor progresar poco a poco.`
     );
     training = { ...training, daysPerWeek: MAX_DAYS_PER_WEEK_NEW_BEGINNER };
   }
@@ -306,10 +314,13 @@ export function validateStrategyPlan(plan: StrategyPlan, ctx: StrategyPlannerCon
     ...plan,
     nutrition,
     training,
-    explanations: [...plan.explanations, ...conflicts],
+    explanations: {
+      nutrition: [...plan.explanations.nutrition, ...nutritionConflicts],
+      training: [...plan.explanations.training, ...trainingConflicts],
+    },
   };
 
-  return { plan: adjustedPlan, conflicts };
+  return { plan: adjustedPlan, conflicts: { nutrition: nutritionConflicts, training: trainingConflicts } };
 }
 
 // ─── DAILY FOCUS ──────────────────────────────────────────────────────────
