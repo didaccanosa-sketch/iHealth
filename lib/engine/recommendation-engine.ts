@@ -65,6 +65,9 @@ export type StrategyPlan = {
   steps: {
     dailyStepsTarget: number; // genérico fijo por ahora
   };
+  water: {
+    dailyMlTarget: number; // genérico fijo por ahora, mismo criterio que sueño/pasos
+  };
   // Hechos en español sencillo (sin jerga), separados por dominio — cada
   // pantalla enseña solo lo suyo (Nutrition no ve por qué se ajustó el
   // cardio, Workout no ve por qué se ajustaron las calorías). No es
@@ -128,8 +131,13 @@ const DEFAULT_CARDIO_SESSIONS: Record<GoalType, number> = {
   mobility: 0,
 };
 
-const GENERIC_SLEEP_HOURS_TARGET = 8;
-const GENERIC_DAILY_STEPS_TARGET = 8000;
+// Exportadas (no solo internas) porque el widget de tracking de Today las
+// necesita sin depender de tener un objetivo fijado — a diferencia del resto
+// del Strategy Planner, estos tres targets no dependen todavía del contexto
+// del usuario (ver StrategyPlan.recovery/steps/water).
+export const GENERIC_SLEEP_HOURS_TARGET = 8;
+export const GENERIC_DAILY_STEPS_TARGET = 8000;
+export const GENERIC_DAILY_WATER_ML_TARGET = 2500;
 const DEFAULT_MEALS_PER_DAY = 4;
 
 // Mismo binario que ya usa el resto de la app (Experience del User Model).
@@ -252,6 +260,9 @@ export function computeStrategyPlan(ctx: StrategyPlannerContext): StrategyPlan {
     },
     steps: {
       dailyStepsTarget: GENERIC_DAILY_STEPS_TARGET,
+    },
+    water: {
+      dailyMlTarget: GENERIC_DAILY_WATER_ML_TARGET,
     },
     explanations: {
       nutrition: nutritionExplanations,

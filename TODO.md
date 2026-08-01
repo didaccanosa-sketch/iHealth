@@ -417,8 +417,10 @@ De lo que no depende de nada más a lo que depende de otras piezas:
      diseño cerrado, ver sección dedicada "Goal Chat" más arriba. Se
      construye en otra sesión, no es parte de este chat del
      Recommendation Engine.
-7. **Tracking de agua/sueño/pasos** — hace falta antes de que esos
-   targets del paso 1 tengan un valor real con el que compararse.
+7. [x] **Tracking de agua/sueño/pasos (2026-08-01)** — construido, ver sección
+   dedicada más abajo. Sigue pendiente el siguiente paso: que estos targets
+   dejen de ser genéricos fijos y el Strategy Planner los compare contra lo
+   registrado de verdad.
 8. **Adaptación dinámica** — replanteo automático limitado (máx. 1/semana),
    necesita datos reales de adherencia fluyendo (workout/comidas →
    `Adherence` del User Model, ya pendiente aparte) más lo del paso 7.
@@ -622,11 +624,34 @@ prescribir esfuerzo.
       articulación en sí), y que el futuro Recommendation Engine lea el
       readiness para ajustar recomendaciones.
 
+## Tracking de agua/sueño/pasos — v1 construido (2026-08-01)
+- [x] Tres tablas nuevas: `water_logs` (ya existía en el esquema, sin usar y
+      sin `grant` — bug arreglado de paso, mismo patrón que ya pasó con
+      otras tablas), `sleep_logs` y `step_logs` (nuevas, un valor único por
+      día vía `upsert`, mismo patrón que `weight_logs`). **Pendiente:
+      ejecutar el esquema contra Supabase.**
+- [x] Agua se registra a toques ("+vaso" = 250 ml), cada toque es una fila
+      nueva — el total del día es la suma, no un valor que se sobrescribe.
+      Sueño y pasos son un número manual una vez al día, sin integración con
+      wearables (decisión explícita, no estaba planeado para esta pasada).
+- [x] `lib/data/tracking.ts`: `addWater`/`logSleep`/`logSteps`/
+      `fetchTodayTracking`.
+- [x] Targets genéricos fijos (2500 ml / 8h / 8000 pasos) exportados desde
+      `lib/engine/recommendation-engine.ts` — mismos que ya usaba el
+      Strategy Planner internamente, ahora también visibles para el widget
+      sin depender de tener un objetivo fijado.
+- [x] Widget único en Today (`components/tracking/TrackingCard.tsx`),
+      sustituye la card placeholder — sin pantalla propia ni histórico
+      (decisión explícita para esta pasada).
+- [ ] Pendiente encima de esto: que el Strategy Planner compare estos
+      targets contra lo registrado de verdad en vez de quedarse en genérico
+      fijo (ver paso 7 del Recommendation Engine más arriba).
+
 ## Piezas grandes que faltan (del documento de producto)
 - [ ] **Recommendation Engine** de verdad (junta Workout+Nutrition+Goal+Recovery+Insight) — diseño ya hecho, ver sección dedicada arriba; se construye repartido en 2 chats ("Workout Engine" + "Recommendation Engine")
 - [~] **Today** — pantalla principal: card de objetivo hecha (`GoalSummaryCard`, solo vistazo, tapas a Progress para editar/detalle), resumen y widget de Nutrición y widget "Up Next" de Entrenamiento ya existían. Falta: FAB centrado persistente en las 4 pestañas
 - [~] **Perfil** (pantalla aparte, no pestaña) — `app/profile.tsx` ya existe con la sección de Identity (age/sex/height/starting weight). Falta: email, cambiar contraseña/email, cerrar sesión, mover aquí el toggle de tema (hoy en Progress)
-- [ ] **Agua y sueño** — no se registran todavía
+- [x] **Agua, sueño y pasos** — tracker construido (2026-08-01), ver sección dedicada más abajo
 - [ ] **Fotos de comida** — analizar con IA y descartar la imagen después
 - [ ] **Fotos corporales** para estimar % graso aproximado (Progreso)
 - [ ] **Sugerencia de comidas por IA según historial** — pieza futura del Insight Engine

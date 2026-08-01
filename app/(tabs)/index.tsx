@@ -18,6 +18,7 @@ import { computeDailyFocus } from '../../lib/engine/recommendation-engine';
 import { Meal, MacroGoals } from '../../lib/engine/types';
 import { QuestionCard } from '../../features/profile/QuestionCard';
 import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
+import { TrackingCard } from '../../components/tracking/TrackingCard';
 
 type NextSession = { dayLabel: string; week: number; isDeload: boolean } | null;
 
@@ -217,10 +218,12 @@ export default function TodayScreen() {
           </>
         )}
 
-        {/* Espacio reservado para lo que aún no existe: agua, sueño, peso/tendencia */}
+        <TrackingCard />
+
+        {/* Espacio reservado para lo que aún no existe: peso/tendencia */}
         <Card style={{ borderStyle: 'dashed', opacity: 0.5 }}>
           <Text style={{ color: colors.text2, fontSize: 12, textAlign: 'center' }}>
-            Water, sleep and weight trend widgets will live here once those pieces are built.
+            Weight trend widget will live here once that piece is built.
           </Text>
         </Card>
 

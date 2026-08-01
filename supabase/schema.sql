@@ -95,6 +95,10 @@ create policy "macro_goals: all own" on macro_goals for all using (auth.uid() = 
 grant select, insert, update, delete on macro_goals to authenticated, anon;
 
 -- ─── AGUA ────────────────────────────────────────────────────────────────────
+-- Una fila por cada toque de "+vaso" (sin unique por día) — el total del día
+-- es la suma de `ml` de ese `logged_at`, no un valor único que se sobrescribe
+-- como el peso. Le faltaba el grant (mismo bug que ya pasó con otras tablas
+-- nuevas, ver TODO.md), añadido ahora.
 create table if not exists water_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references profiles(id) on delete cascade not null,
@@ -106,6 +110,51 @@ create table if not exists water_logs (
 alter table water_logs enable row level security;
 drop policy if exists "water_logs: all own" on water_logs;
 create policy "water_logs: all own" on water_logs for all using (auth.uid() = user_id);
+grant select, insert, update, delete on water_logs to authenticated, anon;
+
+-- ─── SUEÑO Y PASOS ───────────────────────────────────────────────────────────
+-- Un registro manual al día (sin integración con wearables todavía), mismo
+-- patrón que weight_logs: upsert por user_id+logged_at, nunca más de un
+-- valor por día.
+create table if not exists sleep_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  hours numeric not null,
+  logged_at date not null default current_date,
+  created_at timestamptz default now()
+);
+
+alter table sleep_logs enable row level security;
+drop policy if exists "sleep_logs: all own" on sleep_logs;
+create policy "sleep_logs: all own" on sleep_logs for all using (auth.uid() = user_id);
+grant select, insert, update, delete on sleep_logs to authenticated, anon;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'sleep_logs_user_date_unique') then
+    alter table sleep_logs add constraint sleep_logs_user_date_unique unique (user_id, logged_at);
+  end if;
+end $$;
+
+create table if not exists step_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  steps int not null,
+  logged_at date not null default current_date,
+  created_at timestamptz default now()
+);
+
+alter table step_logs enable row level security;
+drop policy if exists "step_logs: all own" on step_logs;
+create policy "step_logs: all own" on step_logs for all using (auth.uid() = user_id);
+grant select, insert, update, delete on step_logs to authenticated, anon;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'step_logs_user_date_unique') then
+    alter table step_logs add constraint step_logs_user_date_unique unique (user_id, logged_at);
+  end if;
+end $$;
 
 -- ─── CHECKLIST DIARIO (Today) ────────────────────────────────────────────────
 create table if not exists daily_checklist_items (
