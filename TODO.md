@@ -73,6 +73,101 @@
       Recommendation Engine leyéndolo, y el resto de Settings (email,
       contraseña, logout, tema, foto de perfil).
 
+## Goal Engine — v1 construido (2026-08-01)
+- [x] Motor genérico en `lib/engine/goal-engine.ts` (lógica pura, sin
+      Supabase/UI): recibe una serie temporal de una métrica cualquiera +
+      un valor objetivo + fecha opcional, y calcula tendencia real
+      (regresión lineal), veredicto (`insufficient_data / unsupported /
+      reached / on_track / behind / off_track`) y fecha proyectada real —
+      no inventa números con pocos datos, lo dice explícitamente. No sabe
+      nada de nutrición/entrenamiento; el Recommendation Engine (pendiente)
+      es quien debe leer su veredicto para decidir qué ajustar, no al revés.
+- [x] `GoalType` ampliado a `lose_fat / gain_muscle / maintain / strength /
+      stamina / mobility` (antes solo tenía `performance`, vago y sin uso).
+      Preguntas nuevas en el Question Engine para el objetivo de fuerza
+      (ejercicio + 1RM estimado objetivo).
+- [x] Conectado de verdad a dos métricas: Peso (tabla `weight_logs`, que ya
+      existía sin usar) y Fuerza (1RM estimado por sesión, reconstruido a
+      partir de `meso_session_sets`/`meso_exercises`/`meso_sessions` con la
+      fórmula de Epley que ya usaba Training). Stamina y Mobility se pueden
+      elegir como objetivo, pero el motor responde "sin datos conectados"
+      hasta que existan Cardio v2 / tracking de movilidad — enchufar esas
+      fuentes no debería requerir tocar la lógica del motor.
+- [x] Traducción pequeña objetivo→fase de mesociclo (`suggestPhaseForGoal`:
+      lose_fat→definición, gain_muscle→volumen, maintain→mantenimiento),
+      deliberadamente separada del vocabulario de objetivo del usuario para
+      no forzar tipos como fuerza/resistencia/movilidad a encajar ahí.
+- [x] UI en Progress (`components/goal/GoalCard.tsx`): fijar objetivo,
+      tarjeta de veredicto con mini-gráfico de tendencia, input rápido para
+      registrar peso del día.
+- [x] Split Today/Progress: `components/goal/useGoalEvaluation.ts` (hook
+      compartido con la carga del User Model + evaluación) y
+      `components/goal/shared.tsx` (constantes/UI compartidas) para no
+      duplicar lógica entre las dos vistas. Today usa `GoalSummaryCard`
+      (solo lectura, glass, tapa a Progress); Progress usa `GoalCard`
+      (fijar/editar objetivo, registrar peso, gráfico).
+- [x] Borrada la tabla `goals` de `schema.sql` — estaba duplicada con
+      `user_model.goals` y ningún código la usaba.
+- [ ] Pendiente encima de esto: que el Recommendation Engine consulte el
+      veredicto del Goal Engine al generar recomendaciones; conectar
+      Stamina (cuando exista Cardio v2) y Mobility (cuando exista su
+      tracking); fotos corporales para objetivos de composición corporal.
+
+## Estimación genérica del día 1 — diseñado, en construcción (2026-08-01)
+Problema: el Goal Engine exige mínimo 3 registros repartidos en 5+ días antes
+de dar cualquier veredicto real — correcto, pero significa que un usuario
+nuevo no ve nada útil el primer día. Objetivo: dar una primera estimación
+"genérica" (basada en un ritmo típico, no en datos propios) desde el minuto
+uno para Peso, dejando claro que no es la misma confianza que una tendencia
+medida, y que se sustituye sola en cuanto hay histórico real.
+- [ ] `estimateFitnessBaseline`: nivel base (bajo/medio/alto) calculado —
+      sin pregunta nueva — a partir de campos que ya existen: actividad
+      diaria, días de entrenamiento/semana, experiencia y meses entrenando
+      (ver punto siguiente).
+- [ ] Pregunta nueva en Training: **meses entrenando de forma constante**
+      (`training.trainingMonths`, tipo `number`). El campo actual de
+      experiencia (`beginner`/`advanced`) es binario y flojo — esto afina
+      mucho más el ritmo esperado (alguien "principiante" de 2 semanas no es
+      lo mismo que uno de 8 meses sin resultados). Aplica a cualquier
+      objetivo, no solo a fuerza.
+- [ ] `goal-engine.ts`: nuevo campo `confidence: 'measured' | 'generic'` en
+      `GoalEvaluation`. Si no hay tendencia real pero sí un punto de partida
+      (peso inicial del perfil), usa una tasa genérica según objetivo +
+      nivel base en vez de `insufficient_data`. Marcado explícitamente como
+      estimación genérica en el mensaje, nunca mezclado con datos reales.
+- [ ] Solo para Peso por ahora. Fuerza se queda sin genérico — la marca
+      actual de un ejercicio no se pregunta de memoria, se espera a que el
+      usuario registre una sesión de verdad (decisión explícita: sin eso no
+      hay ninguna base honesta de la que partir).
+- [ ] `GoalCard.tsx`: mostrar el nivel de confianza en la tarjeta de
+      veredicto ("Estimación genérica, se irá afinando" vs. el mensaje
+      actual cuando ya es tendencia real).
+
+## Onboarding real al registrarse — diseñado, pendiente de construir
+Hoy todas las preguntas del User Model salen poco a poco en la tarjeta de
+progressive profiling al final de Today — bien para preguntas secundarias,
+pero un usuario recién registrado tarda en ver nada del Goal Engine porque
+faltan datos básicos. Idea: una pantalla de onboarding real justo después
+de registrarse, antes de entrar a Today, que reutiliza el Question Engine
+que ya existe (no uno nuevo) pero solo con las preguntas mínimas para poder
+dar la primera estimación:
+- [ ] Detectar "usuario recién registrado, sin ningún campo de `user_model`
+      confirmado todavía" y redirigir a la pantalla de onboarding en vez de
+      a Today directamente (una sola vez, no se vuelve a mostrar después).
+- [ ] Recorrido mínimo de la primera vez: objetivo (`goals.type`), peso
+      objetivo si aplica, peso inicial (si no viene ya de `profiles`), meses
+      entrenando, nivel de actividad diaria. Todo por el Question Engine
+      existente, filtrando qué preguntas entran en este recorrido corto.
+- [ ] Al terminar, aterriza en Today con el Goal Engine ya pudiendo mostrar
+      su primera estimación genérica en Progress (ver sección de arriba).
+- [ ] El resto de preguntas (nutrición, lesiones, preferencias, adherence...)
+      se siguen preguntando poco a poco después, en Today, como hasta ahora
+      — el onboarding no las incluye, solo lo mínimo para el primer
+      estimado.
+- [ ] Pendiente de decidir: qué pasa si el usuario cierra/sale del
+      onboarding a medias (¿se puede saltar y completar luego desde Today,
+      o es obligatorio terminarlo?).
+
 ## En cola (próximo) — Review de la última actualización (Cardio + Plantillas)
 
 - [ ] **PIEZA A — Rehacer el flujo de creación con plantilla (bug de pregunta repetida)**
@@ -137,11 +232,10 @@
 - [ ] Tendencia semanal de peso por ejercicio (existía en la versión web) no está construida en esta versión de Training
 
 ## Piezas grandes que faltan (del documento de producto)
-- [ ] **Goal Engine** — objetivo de peso/fecha con cálculo real de ETA
 - [ ] **Insight Engine real (IA)** — el resumen corto de Nutrition (`nutritionCoachLine`) es reglas fijas, no IA todavía
 - [ ] **Recovery Engine** — hoy solo se registra feedback de sesión, no se usa para nada automatizado
 - [ ] **Recommendation Engine** de verdad (junta Workout+Nutrition+Goal+Recovery+Insight)
-- [ ] **Today** — pantalla principal: card de objetivo, resumen, widget de Nutrición (anillo único + frase, sin números crudos), widget "Up Next" de Entrenamiento, FAB centrado persistente en las 4 pestañas
+- [~] **Today** — pantalla principal: card de objetivo hecha (`GoalSummaryCard`, solo vistazo, tapas a Progress para editar/detalle), resumen y widget de Nutrición y widget "Up Next" de Entrenamiento ya existían. Falta: FAB centrado persistente en las 4 pestañas
 - [~] **Perfil** (pantalla aparte, no pestaña) — `app/profile.tsx` ya existe con la sección de Identity (age/sex/height/starting weight). Falta: email, cambiar contraseña/email, cerrar sesión, mover aquí el toggle de tema (hoy en Progress)
 - [ ] **Agua y sueño** — no se registran todavía
 - [ ] **Fotos de comida** — analizar con IA y descartar la imagen después

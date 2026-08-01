@@ -51,6 +51,7 @@ export type Experience = 'beginner' | 'advanced';
 
 export type TrainingModel = {
   experience: Field<Experience>;
+  trainingMonths: Field<number>; // meses entrenando de forma constante — más preciso que experience solo
   daysPerWeek: Field<number>;
   equipment: Field<string[]>;
   preferredExercises: Field<string[]>;
@@ -136,6 +137,7 @@ export function createEmptyUserModel(): UserModelData {
     },
     training: {
       experience: unknownField(),
+      trainingMonths: unknownField(),
       daysPerWeek: unknownField(),
       equipment: unknownField(),
       preferredExercises: unknownField(),

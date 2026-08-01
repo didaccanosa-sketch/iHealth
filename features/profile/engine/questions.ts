@@ -87,6 +87,14 @@ export const QUESTIONS: Question[] = [
     priority: 95,
   },
   {
+    id: 'training.trainingMonths',
+    category: 'training',
+    field: 'trainingMonths',
+    text: '¿Cuántos meses llevas entrenando de forma constante?',
+    answerType: 'number',
+    priority: 94,
+  },
+  {
     id: 'training.daysPerWeek',
     category: 'training',
     field: 'daysPerWeek',

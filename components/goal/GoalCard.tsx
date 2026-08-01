@@ -1,81 +1,30 @@
-// Goal Engine — UI. No decide nada por su cuenta: pide el objetivo al User
-// Model, le da el histórico real (peso o fuerza) a lib/engine/goal-engine y
-// muestra el veredicto tal cual. Ver docs/GOAL_ENGINE.md.
-import React, { useCallback, useEffect, useState } from 'react';
+// Goal Engine — UI completa (Progress): fijar/editar objetivo, ver
+// veredicto y registrar peso. La versión compacta de solo lectura vive en
+// GoalSummaryCard (Today). Ambas comparten datos vía useGoalEvaluation.
+import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { Card } from '../Card';
 import { useAppTheme } from '../../lib/theme-context';
 import { useAuth } from '../../lib/auth-context';
 import { radius, spacing } from '../../constants/theme';
-import { loadUserModel, saveUserModel } from '../../features/profile/data/user-model-data';
+import { saveUserModel } from '../../features/profile/data/user-model-data';
 import { setField } from '../../features/profile/engine/user-model';
-import type { GoalType, UserModelData } from '../../features/profile/engine/types';
-import { evaluateGoal, GoalEvaluation, GoalStatus, GOAL_METRICS, canEvaluate, MetricPoint } from '../../lib/engine/goal-engine';
-import { fetchWeightHistory, logWeight } from '../../lib/data/weight-logs';
-import { fetchStrengthHistory } from '../../lib/data/strength-history';
-
-const GOAL_TYPE_OPTIONS: { label: string; value: GoalType }[] = [
-  { label: 'Perder grasa', value: 'lose_fat' },
-  { label: 'Ganar músculo', value: 'gain_muscle' },
-  { label: 'Mantenerme', value: 'maintain' },
-  { label: 'Ganar fuerza', value: 'strength' },
-  { label: 'Resistencia', value: 'stamina' },
-  { label: 'Movilidad', value: 'mobility' },
-];
-
-const STATUS_TEXT: Record<GoalStatus, string> = {
-  insufficient_data: 'Necesito más registros para calcularlo de verdad',
-  unsupported: 'Este objetivo aún no tiene datos conectados',
-  reached: 'Objetivo alcanzado',
-  on_track: 'On track',
-  behind: 'Por detrás del ritmo',
-  off_track: 'Fuera de ritmo',
-};
-
-function statusColor(status: GoalStatus, colors: ReturnType<typeof useAppTheme>['colors']): string {
-  if (status === 'reached' || status === 'on_track') return colors.success;
-  if (status === 'behind') return colors.warning;
-  if (status === 'off_track') return colors.danger;
-  return colors.text2;
-}
-
-function Sparkline({ points, color }: { points: MetricPoint[]; color: string }) {
-  if (points.length < 2) return null;
-  const values = points.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const last = points.slice(-14);
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 40, gap: 3, marginTop: spacing.sm }}>
-      {last.map((p, i) => (
-        <View
-          key={i}
-          style={{
-            flex: 1,
-            height: Math.max(((p.value - min) / range) * 36, 3),
-            backgroundColor: color,
-            borderRadius: 2,
-          }}
-        />
-      ))}
-    </View>
-  );
-}
+import type { GoalType } from '../../features/profile/engine/types';
+import { Sparkline, STATUS_TEXT, statusColor, GOAL_TYPE_OPTIONS } from './shared';
+import { GOAL_METRICS } from '../../lib/engine/goal-engine';
+import { logWeight } from '../../lib/data/weight-logs';
+import { useGoalEvaluation } from './useGoalEvaluation';
 
 export function GoalCard() {
   const { colors } = useAppTheme();
   const { session } = useAuth();
   const userId = session?.user.id as string;
 
-  const [model, setModel] = useState<UserModelData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { model, loading, hasGoal, goalType, metric, evaluation, evalLoading, history, applyModel, refresh } =
+    useGoalEvaluation(userId);
+
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const [evaluation, setEvaluation] = useState<GoalEvaluation | null>(null);
-  const [history, setHistory] = useState<MetricPoint[]>([]);
-  const [evalLoading, setEvalLoading] = useState(false);
 
   const [type, setType] = useState<GoalType | null>(null);
   const [targetWeightKg, setTargetWeightKg] = useState('');
@@ -87,61 +36,6 @@ export function GoalCard() {
   const [weightInput, setWeightInput] = useState('');
   const [logging, setLogging] = useState(false);
   const [logged, setLogged] = useState(false);
-
-  const hasGoal = !!model && model.goals.type.status === 'confirmed';
-
-  const runEvaluation = useCallback(
-    async (m: UserModelData) => {
-      const goalType = m.goals.type.value;
-      if (!goalType || !canEvaluate(goalType)) {
-        setEvaluation(null);
-        setHistory([]);
-        return;
-      }
-      setEvalLoading(true);
-      try {
-        const metric = GOAL_METRICS[goalType];
-        let points: MetricPoint[] = [];
-        let targetValue: number | null = null;
-        if (metric === 'weight') {
-          points = await fetchWeightHistory(userId);
-          targetValue = m.goals.targetWeightKg.value;
-        } else if (metric === 'strength') {
-          const exercise = m.goals.targetExercise.value;
-          if (exercise) points = await fetchStrengthHistory(userId, exercise);
-          targetValue = m.goals.targetExerciseKg.value;
-        }
-        setHistory(points);
-        if (targetValue == null) {
-          setEvaluation(null);
-          return;
-        }
-        setEvaluation(evaluateGoal({ history: points, targetValue, targetDate: m.goals.targetDate.value }));
-      } catch {
-        setEvaluation(null);
-      } finally {
-        setEvalLoading(false);
-      }
-    },
-    [userId]
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    loadUserModel(userId)
-      .then((m) => {
-        if (cancelled) return;
-        setModel(m);
-        setLoading(false);
-        if (m.goals.type.status === 'confirmed') runEvaluation(m);
-      })
-      .catch(() => setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-    // solo al montar — runEvaluation se dispara aparte cuando cambian datos
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
 
   const openEdit = useCallback(() => {
     if (model) {
@@ -178,13 +72,12 @@ export function GoalCard() {
     }
     try {
       await saveUserModel(userId, next);
-      setModel(next);
+      applyModel(next);
       setEditing(false);
-      runEvaluation(next);
     } finally {
       setSaving(false);
     }
-  }, [model, type, targetWeightKg, targetExercise, targetExerciseKg, targetDate, userId, runEvaluation]);
+  }, [model, type, targetWeightKg, targetExercise, targetExerciseKg, targetDate, userId, applyModel]);
 
   const submitWeight = useCallback(async () => {
     const kg = Number(weightInput.trim());
@@ -194,12 +87,12 @@ export function GoalCard() {
       await logWeight(userId, kg);
       setWeightInput('');
       setLogged(true);
-      if (model) runEvaluation(model);
+      refresh();
       setTimeout(() => setLogged(false), 2500);
     } finally {
       setLogging(false);
     }
-  }, [weightInput, userId, model, runEvaluation]);
+  }, [weightInput, userId, refresh]);
 
   const inputStyle = {
     backgroundColor: colors.surface2,
@@ -285,7 +178,7 @@ export function GoalCard() {
           </>
         )}
 
-        {(selectedMetric === 'unsupported') && (
+        {selectedMetric === 'unsupported' && (
           <Text style={{ color: colors.text2, fontSize: 12, marginBottom: spacing.md }}>
             Este objetivo se puede guardar, pero todavía no hay datos que registrar para él — no dará una predicción real hasta que se construya.
           </Text>
@@ -329,8 +222,6 @@ export function GoalCard() {
     );
   }
 
-  const goalType = model!.goals.type.value as GoalType;
-  const metric = GOAL_METRICS[goalType];
   const color = evaluation ? statusColor(evaluation.status, colors) : colors.text2;
 
   return (
@@ -351,7 +242,14 @@ export function GoalCard() {
 
       {!evalLoading && evaluation && (
         <>
-          <Text style={{ color, fontSize: 14, fontWeight: '700', marginTop: 6 }}>{STATUS_TEXT[evaluation.status]}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <Text style={{ color, fontSize: 14, fontWeight: '700' }}>{STATUS_TEXT[evaluation.status]}</Text>
+            {evaluation.confidence === 'generic' && (
+              <View style={{ backgroundColor: colors.surface2, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                <Text style={{ color: colors.text2, fontSize: 10, fontWeight: '700' }}>ESTIMACIÓN GENÉRICA</Text>
+              </View>
+            )}
+          </View>
           <Text style={{ color: colors.text2, fontSize: 13, marginTop: 4, lineHeight: 18 }}>{evaluation.message}</Text>
           {evaluation.currentValue != null && evaluation.targetValue != null && (
             <Text style={{ color: colors.text2, fontSize: 12, marginTop: 6 }}>

@@ -15,6 +15,7 @@ import { fetchMesocycles, fetchMesocycleDetail } from '../../lib/data/workout';
 import { getSessionDef } from '../../lib/engine/workout-engine';
 import { Meal } from '../../lib/engine/types';
 import { QuestionCard } from '../../features/profile/QuestionCard';
+import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
 
 type NextSession = { dayLabel: string; week: number; isDeload: boolean } | null;
 
@@ -122,19 +123,7 @@ export default function TodayScreen() {
           </Pressable>
         </View>
 
-        {/* Objetivo — placeholder hasta que exista el Goal Engine */}
-        <Card variant="glass">
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 }}>CURRENT GOAL</Text>
-            <View style={{ backgroundColor: colors.surface2, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 }}>
-              <Text style={{ color: colors.text2, fontSize: 10, fontWeight: '700' }}>COMING SOON</Text>
-            </View>
-          </View>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginTop: 6 }}>No goal set yet</Text>
-          <Text style={{ color: colors.text2, fontSize: 12, marginTop: 4 }}>
-            Weight target, ETA and progress will show up here once goals are built.
-          </Text>
-        </Card>
+        <GoalSummaryCard />
 
         {loading ? (
           <ActivityIndicator color={colors.accent} style={{ marginTop: 12 }} />

@@ -7,10 +7,13 @@
 // el Recommendation Engine más adelante) le dan los puntos ya calculados.
 //
 // Cuantos más puntos históricos haya, más fiable es la tendencia — con
-// pocos puntos el motor lo dice explícitamente en vez de inventar un
-// número (`status: 'insufficient_data'`), no hay heurísticas de relleno.
+// pocos puntos el motor no inventa un número, lo dice explícitamente
+// (`status: 'insufficient_data'`). La única excepción es un ritmo
+// *genérico* (no medido) para dar una primera estimación del día 1 en
+// objetivos de peso — siempre marcado con `confidence: 'generic'`, nunca
+// mezclado con una tendencia real (`confidence: 'measured'`).
 
-import { GoalType } from '../../features/profile/engine/types';
+import { ActivityLevel, Experience, GoalType } from '../../features/profile/engine/types';
 import { Phase } from './types';
 
 export type MetricPoint = { date: string; value: number }; // date: ISO (yyyy-mm-dd)
@@ -87,19 +90,69 @@ export function computeTrend(history: MetricPoint[]): Trend | null {
   };
 }
 
+// ─── Nivel base / ritmo genérico (estimación del día 1, sin histórico) ─────
+//
+// Combina señales que ya existen en el User Model (nadie pregunta nada
+// nuevo para esto salvo trainingMonths) para elegir, muy a grandes rasgos,
+// qué tan rápido es razonable esperar que alguien progrese. No sustituye
+// nunca a una tendencia medida — solo rellena el hueco del día 1.
+export type FitnessBaseline = 'low' | 'medium' | 'high';
+
+export function estimateFitnessBaseline(input: {
+  dailyActivity: ActivityLevel | null;
+  daysPerWeek: number | null;
+  trainingMonths: number | null;
+  experience: Experience | null;
+}): FitnessBaseline {
+  let score = 0;
+  if (input.dailyActivity === 'medium') score += 1;
+  if (input.dailyActivity === 'high') score += 2;
+  if (input.daysPerWeek != null) score += Math.min(input.daysPerWeek, 5) / 2.5; // 0-2
+  if (input.trainingMonths != null) score += Math.min(input.trainingMonths, 24) / 12; // 0-2
+  if (input.experience === 'advanced') score += 1;
+
+  if (score >= 3.5) return 'high';
+  if (score >= 1.5) return 'medium';
+  return 'low';
+}
+
+// Ritmo genérico como % del peso actual por semana (magnitud, sin signo —
+// la dirección la decide evaluateGoal según hacia dónde esté el objetivo).
+// Cifras conservadoras de ritmo saludable habitual, no un máximo teórico.
+// `maintain` no tiene ritmo genérico: no hay "prisa" que estimar.
+const GENERIC_WEIGHT_RATE_PCT: Record<'lose_fat' | 'gain_muscle', Record<FitnessBaseline, number>> = {
+  lose_fat: { low: 0.004, medium: 0.006, high: 0.008 },
+  gain_muscle: { low: 0.0015, medium: 0.0025, high: 0.0035 },
+};
+
+// Magnitud (kg/semana) del ritmo genérico para un objetivo de peso, o null
+// si no aplica (maintain, o currentValue desconocido).
+export function genericWeightRateMagnitude(
+  goalType: GoalType,
+  currentValue: number | null,
+  baseline: FitnessBaseline
+): number | null {
+  if (currentValue == null) return null;
+  if (goalType !== 'lose_fat' && goalType !== 'gain_muscle') return null;
+  return GENERIC_WEIGHT_RATE_PCT[goalType][baseline] * currentValue;
+}
+
 export type GoalStatus =
-  | 'insufficient_data' // no hay suficiente histórico todavía para decir nada real
+  | 'insufficient_data' // no hay ni histórico ni un punto de partida del que estimar nada
   | 'unsupported' // este tipo de objetivo no tiene fuente de datos conectada
   | 'reached' // ya está en el objetivo (o mejor)
   | 'on_track' // al ritmo actual llega a tiempo (o antes)
   | 'behind' // avanza en la dirección correcta pero no lo bastante rápido
   | 'off_track'; // se aleja del objetivo, o no se mueve en absoluto
 
+export type GoalConfidence = 'measured' | 'generic';
+
 export type GoalEvaluation = {
   status: GoalStatus;
+  confidence: GoalConfidence | null; // null cuando no hay nada que evaluar (insufficient_data/unsupported)
   currentValue: number | null;
   targetValue: number | null;
-  ratePerWeek: number | null; // ritmo real observado
+  ratePerWeek: number | null; // ritmo real observado, o el genérico si confidence === 'generic'
   requiredRatePerWeek: number | null; // ritmo que haría falta para llegar en targetDate
   projectedDate: string | null; // fecha estimada de llegar al objetivo al ritmo actual
   message: string;
@@ -116,19 +169,49 @@ export type EvaluateGoalInput = {
   targetValue: number;
   targetDate?: string | null; // ISO date, opcional
   today?: string; // ISO date, por defecto hoy — parametrizable para tests
+  // Ritmo genérico opcional (magnitud, sin signo) para cuando no hay
+  // tendencia real todavía — normalmente de genericWeightRateMagnitude.
+  // Requiere también un valor de partida (currentValue) si el histórico
+  // está vacío del todo.
+  genericRateMagnitude?: number | null;
+  fallbackCurrentValue?: number | null;
 };
 
 // Punto de entrada principal. Genérico a propósito: no sabe si la métrica es
 // peso o 1RM, solo compara "dónde estás" contra "dónde quieres estar" y a
-// qué ritmo te mueves de verdad.
+// qué ritmo te mueves (medido, o a falta de eso, genérico).
 export function evaluateGoal(input: EvaluateGoalInput): GoalEvaluation {
   const today = input.today ?? new Date().toISOString().slice(0, 10);
   const trend = computeTrend(input.history);
 
-  if (!trend) {
+  let currentValue: number | null;
+  let ratePerWeek: number | null;
+  let confidence: GoalConfidence | null;
+  let genericNote = '';
+
+  if (trend) {
+    currentValue = trend.currentValue;
+    ratePerWeek = trend.ratePerWeek;
+    confidence = 'measured';
+  } else {
+    currentValue =
+      input.history.length ? input.history[input.history.length - 1].value : input.fallbackCurrentValue ?? null;
+    const remainingForDirection = currentValue != null ? input.targetValue - currentValue : null;
+    if (currentValue != null && input.genericRateMagnitude != null && remainingForDirection !== 0) {
+      ratePerWeek = Math.sign(remainingForDirection ?? 0) * Math.abs(input.genericRateMagnitude);
+      confidence = 'generic';
+      genericNote = 'Estimación genérica (ritmo típico, no tus datos todavía): ';
+    } else {
+      ratePerWeek = null;
+      confidence = null;
+    }
+  }
+
+  if (currentValue == null || ratePerWeek == null || confidence == null) {
     return {
       status: 'insufficient_data',
-      currentValue: input.history.length ? input.history[input.history.length - 1].value : null,
+      confidence: null,
+      currentValue,
       targetValue: input.targetValue,
       ratePerWeek: null,
       requiredRatePerWeek: null,
@@ -137,13 +220,13 @@ export function evaluateGoal(input: EvaluateGoalInput): GoalEvaluation {
     };
   }
 
-  const { currentValue, ratePerWeek } = trend;
   const remaining = input.targetValue - currentValue;
 
   // Ya en el objetivo (con margen mínimo para no oscilar por ruido de medición)
   if (Math.abs(remaining) < 0.001) {
     return {
       status: 'reached',
+      confidence,
       currentValue,
       targetValue: input.targetValue,
       ratePerWeek,
@@ -156,10 +239,12 @@ export function evaluateGoal(input: EvaluateGoalInput): GoalEvaluation {
   const neededDirection = Math.sign(remaining); // +1 si hay que subir, -1 si hay que bajar
   const actualDirection = Math.sign(ratePerWeek);
 
-  // Se mueve en la dirección contraria (o no se mueve nada)
-  if (actualDirection !== neededDirection || ratePerWeek === 0) {
+  // Se mueve en la dirección contraria (o no se mueve nada) — no aplica a
+  // 'generic', que siempre se construye ya en la dirección necesaria
+  if (confidence === 'measured' && (actualDirection !== neededDirection || ratePerWeek === 0)) {
     return {
       status: 'off_track',
+      confidence,
       currentValue,
       targetValue: input.targetValue,
       ratePerWeek,
@@ -175,12 +260,13 @@ export function evaluateGoal(input: EvaluateGoalInput): GoalEvaluation {
   if (!input.targetDate) {
     return {
       status: 'on_track',
+      confidence,
       currentValue,
       targetValue: input.targetValue,
       ratePerWeek,
       requiredRatePerWeek: null,
       projectedDate,
-      message: `Al ritmo actual, llegarías a tu objetivo alrededor de ${projectedDate}.`,
+      message: `${genericNote}Al ritmo ${confidence === 'generic' ? 'típico para tu perfil' : 'actual'}, llegarías a tu objetivo alrededor de ${projectedDate}.`,
     };
   }
 
@@ -192,35 +278,38 @@ export function evaluateGoal(input: EvaluateGoalInput): GoalEvaluation {
   if (ratio >= 0.95) {
     return {
       status: 'on_track',
+      confidence,
       currentValue,
       targetValue: input.targetValue,
       ratePerWeek,
       requiredRatePerWeek,
       projectedDate,
-      message: `Vas on track para llegar el ${input.targetDate}.`,
+      message: `${genericNote}Vas on track para llegar el ${input.targetDate}.`,
     };
   }
 
   if (ratio >= 0.5) {
     return {
       status: 'behind',
+      confidence,
       currentValue,
       targetValue: input.targetValue,
       ratePerWeek,
       requiredRatePerWeek,
       projectedDate,
-      message: `Vas por detrás del ritmo necesario para el ${input.targetDate}. A este paso, la fecha real sería ${projectedDate}.`,
+      message: `${genericNote}Vas por detrás del ritmo necesario para el ${input.targetDate}. A este paso, la fecha real sería ${projectedDate}.`,
     };
   }
 
   return {
     status: 'off_track',
+    confidence,
     currentValue,
     targetValue: input.targetValue,
     ratePerWeek,
     requiredRatePerWeek,
     projectedDate,
-    message: `Muy por detrás del ritmo necesario para el ${input.targetDate}. Con el ritmo actual, la fecha estimada real es ${projectedDate}.`,
+    message: `${genericNote}Muy por detrás del ritmo necesario para el ${input.targetDate}. Con el ritmo actual, la fecha estimada real es ${projectedDate}.`,
   };
 }
 
