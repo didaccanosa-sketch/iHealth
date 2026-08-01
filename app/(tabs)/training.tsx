@@ -51,6 +51,7 @@ export default function TrainingScreen() {
 
   const [wizardInitial, setWizardInitial] = useState<NewMesoInput | null>(null);
   const [recommending, setRecommending] = useState(false);
+  const [recommendError, setRecommendError] = useState<string | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [meso, setMeso] = useState<Mesocycle | null>(null);
@@ -260,12 +261,17 @@ export default function TrainingScreen() {
     setView('wizard');
   }
 
+  // El aviso de "sin objetivo" o de error se muestra dentro de la propia
+  // pantalla (recommendError, más abajo) — nada de Alert.alert nativo aquí:
+  // en web se veía como un aviso suelto de "localhost" en vez de parte de
+  // la app (mismo arreglo que en Nutrition).
   async function handleRecommend() {
     setRecommending(true);
+    setRecommendError(null);
     try {
       const plan = await getStrategyRecommendation(userId);
       if (!plan) {
-        Alert.alert('Sin objetivo', 'Primero fija un objetivo en Progress — sin eso el motor no tiene qué calcular.');
+        setRecommendError('Primero fija un objetivo en Progress — sin eso el motor no tiene qué calcular.');
         return;
       }
       // El split día a día lo sigue generando el propio Workout Engine
@@ -281,7 +287,7 @@ export default function TrainingScreen() {
       setView('wizard');
     } catch (e: any) {
       console.error('Could not compute recommendation:', e);
-      Alert.alert('Error', e.message || 'No se pudo calcular la recomendación, inténtalo de nuevo.');
+      setRecommendError(e.message || 'No se pudo calcular la recomendación, inténtalo de nuevo.');
     }
     setRecommending(false);
   }
@@ -322,16 +328,21 @@ export default function TrainingScreen() {
       )}
 
       {view === 'createChoice' && (
-        <CreateMesoChooser
-          onFromScratch={() => {
-            setWizardInitial(null);
-            setView('wizard');
-          }}
-          onUseTemplate={() => setView('templatePicker')}
-          onRecommend={handleRecommend}
-          recommending={recommending}
-          onCancel={() => setView('menu')}
-        />
+        <>
+          {recommendError && (
+            <Text style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{recommendError}</Text>
+          )}
+          <CreateMesoChooser
+            onFromScratch={() => {
+              setWizardInitial(null);
+              setView('wizard');
+            }}
+            onUseTemplate={() => setView('templatePicker')}
+            onRecommend={handleRecommend}
+            recommending={recommending}
+            onCancel={() => setView('menu')}
+          />
+        </>
       )}
 
       {view === 'templatePicker' && (

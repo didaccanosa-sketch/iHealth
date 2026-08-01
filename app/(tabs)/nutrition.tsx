@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
   Text,
   View,
   Pressable,
@@ -44,6 +43,7 @@ import {
   DayTemplate,
 } from '../../lib/data/nutrition';
 import { getStrategyRecommendation } from '../../lib/data/recommendation';
+import type { StrategyPlan } from '../../lib/engine/recommendation-engine';
 
 export default function NutritionScreen() {
   const { colors } = useAppTheme();
@@ -66,6 +66,9 @@ export default function NutritionScreen() {
   const [nutritionLine, setNutritionLine] = useState<string | null>(null);
   const [macroGoals, setMacroGoals] = useState<MacroGoals>(DEFAULT_GOALS);
   const [recommending, setRecommending] = useState(false);
+  const [recommendedPlan, setRecommendedPlan] = useState<StrategyPlan | null>(null);
+  const [recommendModalOpen, setRecommendModalOpen] = useState(false);
+  const [applyingRecommendation, setApplyingRecommendation] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -266,36 +269,38 @@ export default function NutritionScreen() {
     }
   }
 
+  // La propuesta se enseña en una tarjeta dentro de la propia app (más abajo,
+  // junto al Modal de comidas) — nada de diálogos nativos del navegador, que
+  // se veían como un aviso suelto de "localhost" en vez de parte de la app.
   async function handleRecommend() {
     setRecommending(true);
+    setError(null);
     try {
       const plan = await getStrategyRecommendation(userId);
       if (!plan) {
-        const msg = 'Primero fija un objetivo en Progress — sin eso el motor no tiene qué calcular.';
-        if (Platform.OS === 'web') window.alert(msg);
-        else Alert.alert('Sin objetivo', msg);
+        setError('Primero fija un objetivo en Progress — sin eso el motor no tiene qué calcular.');
         return;
       }
-      const { kcal, protein_g, carbs_g, fat_g, fiber_g } = plan.nutrition;
-      const summary = `Calorías: ${kcal} kcal\nProteína: ${protein_g} g\nCarbohidratos: ${carbs_g} g\nGrasa: ${fat_g} g\nFibra: ${fiber_g} g`;
-      const apply = async () => {
-        await saveMacroGoal(userId, plan.nutrition, 'recommendation_engine');
-        setMacroGoals(plan.nutrition);
-      };
-      if (Platform.OS === 'web') {
-        if (window.confirm(`Objetivo propuesto:\n${summary}\n\n¿Aplicar?`)) await apply();
-      } else {
-        Alert.alert('Objetivo propuesto', summary, [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Aplicar', onPress: apply },
-        ]);
-      }
+      setRecommendedPlan(plan);
+      setRecommendModalOpen(true);
     } catch (e: any) {
-      const msg = e.message || 'No se pudo calcular la recomendación, inténtalo de nuevo.';
-      if (Platform.OS === 'web') window.alert(msg);
-      else Alert.alert('Error', msg);
+      setError(e.message || 'No se pudo calcular la recomendación, inténtalo de nuevo.');
     }
     setRecommending(false);
+  }
+
+  async function handleApplyRecommendation() {
+    if (!recommendedPlan) return;
+    setApplyingRecommendation(true);
+    try {
+      await saveMacroGoal(userId, recommendedPlan.nutrition, 'recommendation_engine');
+      setMacroGoals(recommendedPlan.nutrition);
+      setRecommendModalOpen(false);
+      setRecommendedPlan(null);
+    } catch (e: any) {
+      setError(e.message || 'No se pudo guardar el objetivo, inténtalo de nuevo.');
+    }
+    setApplyingRecommendation(false);
   }
 
   return (
@@ -550,6 +555,87 @@ export default function NutritionScreen() {
               </Pressable>
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={recommendModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRecommendModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderTopLeftRadius: radius.xl,
+              borderTopRightRadius: radius.xl,
+              padding: spacing.lg,
+              paddingBottom: spacing.xl,
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 4 }}>Objetivo propuesto</Text>
+            <Text style={{ color: colors.text2, fontSize: 12, marginBottom: 16 }}>
+              Calculado por el motor a partir de tu objetivo actual — revisa antes de aplicar.
+            </Text>
+
+            {recommendedPlan && (
+              <View style={{ marginBottom: 20 }}>
+                {[
+                  { label: 'Calorías', value: `${recommendedPlan.nutrition.kcal} kcal` },
+                  { label: 'Proteína', value: `${recommendedPlan.nutrition.protein_g} g` },
+                  { label: 'Carbohidratos', value: `${recommendedPlan.nutrition.carbs_g} g` },
+                  { label: 'Grasa', value: `${recommendedPlan.nutrition.fat_g} g` },
+                  { label: 'Fibra', value: `${recommendedPlan.nutrition.fiber_g} g` },
+                ].map((row) => (
+                  <View
+                    key={row.label}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      paddingVertical: 8,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                    }}
+                  >
+                    <Text style={{ color: colors.text2, fontSize: 13 }}>{row.label}</Text>
+                    <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>{row.value}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => {
+                  setRecommendModalOpen(false);
+                  setRecommendedPlan(null);
+                }}
+                disabled={applyingRecommendation}
+                style={{ flex: 1, backgroundColor: colors.surface2, borderRadius: radius.md, padding: 12, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleApplyRecommendation}
+                disabled={applyingRecommendation}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.accent,
+                  borderRadius: radius.md,
+                  padding: 12,
+                  alignItems: 'center',
+                  opacity: applyingRecommendation ? 0.6 : 1,
+                }}
+              >
+                {applyingRecommendation ? (
+                  <ActivityIndicator color={colors.accentText} />
+                ) : (
+                  <Text style={{ color: colors.accentText, fontWeight: '700' }}>Aplicar</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
         </View>
       </Modal>
     </Screen>
