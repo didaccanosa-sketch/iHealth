@@ -20,6 +20,61 @@ Format:
 
 ---
 
+## 2026-08-02 (regla general: preguntas del chat de una en una, botones para opciones cerradas)
+- Nueva regla general para todo lo que el chat pregunta (no solo un caso
+  puntual): nunca se combinan dos preguntas en un mismo mensaje, y si la
+  respuesta es de una lista cerrada se pide con botones, no texto libre.
+- `lib/data/chat-options.ts` (nuevo): registro de qué campos tienen
+  opciones cerradas (`daysPerWeek`, `equipment`, `mealsPerDay`) con sus
+  opciones — cualquier campo nuevo de opción cerrada se añade aquí.
+- Contrato de `chat-assistant` (`supabase/functions/chat-assistant/index.ts`)
+  cambia: nuevo campo `askField` en la respuesta JSON (qué dato concreto se
+  está preguntando, o `null`). La pregunta combinada de la rutina
+  (días/equipo/gustos) se reemplaza por preguntas sueltas, una por turno,
+  en el orden de `missingTrainingPrefs` (ahora incluye `daysPerWeek`).
+  **Pendiente: redeploy de `chat-assistant`.**
+- `lib/data/chat.ts`: `ChatContext` gana `missingMealsPerDay`; `ChatResult`
+  gana `askField`. `propose_diet` ahora también pregunta `mealsPerDay`
+  antes de generar si no se sabe (mismo patrón que la rutina).
+- `app/(tabs)/index.tsx`: los mensajes del chat pueden traer `askField`; si
+  es uno de `chat-options.ts` se muestran botones (mismo estilo que
+  `helpAreaOptions` en `app/onboarding.tsx`) en vez de dejar escribir.
+
+## 2026-08-02 (memoria del chat, lesiones, rutina con preferencias, onboarding en dos pasos)
+- Ver `docs/SIMPLIFIED_VISION.md` → "Estado actual (2026-08-02)" y
+  "Próxima entrega planificada" para el resumen completo y la idea
+  acordada (no empezada) para la siguiente sesión — no repetir aquí.
+- `sendChatMessage` (`lib/data/chat.ts`) y `chat-assistant`
+  (`supabase/functions/chat-assistant/index.ts`) ahora mandan/reciben
+  historial de conversación (últimos ~8 turnos) — antes cada mensaje se
+  procesaba suelto, sin memoria de lo que el propio chat acababa de
+  preguntar. **Pendiente: redeploy de `chat-assistant`.**
+- `TrainingModel.injuries` (ya existía en el esquema, sin usar) ahora se
+  rellena solo desde el chat y bloquea `propose_workout` mientras esté
+  confirmado — no se genera rutina automática con una lesión en el perfil.
+- `lib/engine/exercise-db.ts`: `EXERCISE_DB` cambió de `string[]` a
+  `{name, equipment}[]` por grupo — cualquier código que lo lea como lista
+  de strings hay que actualizarlo (`ExerciseEquipment`, `EquipmentLevel`,
+  `EQUIPMENT_ELIGIBLE` nuevos). `buildFocusSplit`
+  (`lib/engine/meso-templates.ts`) acepta un tercer argumento opcional
+  `ExercisePreferences` (equipo/preferidos/no-preferidos) y filtra/prioriza
+  con él.
+- `propose_workout` por chat ya no genera sin preguntar ni con un simple
+  sí/no: la primera vez en la conversación pregunta días/enfoque/equipo/
+  gustos en una sola pregunta combinada (usando `context.missingTrainingPrefs`,
+  calculado en código, nunca decidido por la IA), y no la repite si ya la
+  hizo (usa el historial para saberlo).
+- `features/profile/engine/types.ts`: `IdentityModel` ahora se rellena con
+  nombre/apellidos también desde el chat (`saveIdentity`, antes
+  `setIdentityFromChat`, ahora exportada). Nuevo campo
+  `preferences.helpAreas: Field<HelpArea[]>` (opción cerrada: training /
+  nutrition / weight_tracking / all).
+- `app/onboarding.tsx` reescrito en dos pasos: formulario nativo (nombre,
+  edad, sexo, altura, peso — no pasa por la IA, `saveIdentity` directo) y
+  luego chat solo para objetivo + la pregunta cerrada de `helpAreas` (con
+  botones, no texto libre). No dejar pasar a la app hasta que las tres
+  cosas estén confirmadas.
+
 ## 2026-08-01 (paso 7 — motor conectado a agua/sueño/pasos)
 - `StrategyPlan.water.dailyMlTarget` now scales with body weight
   (~35ml/kg) instead of always being the fixed generic —

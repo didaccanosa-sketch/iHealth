@@ -129,5 +129,18 @@ export function useGoalEvaluation(userId: string) {
     if (model) runEvaluation(model);
   }, [model, runEvaluation]);
 
-  return { model, loading, hasGoal, goalType, metric, evaluation, evalLoading, history, progress, applyModel, refresh };
+  // Tras una acción que puede haber cambiado el modelo por un camino
+  // distinto al de este hook (ej. el chat guarda objetivo/identidad
+  // directamente en Supabase, sin pasar por applyModel) — a diferencia de
+  // refresh(), esto recarga de verdad desde Supabase en vez de reusar el
+  // `model` en memoria, que en ese caso está desactualizado.
+  const reload = useCallback(() => {
+    loadUserModel(userId)
+      .then((m) => applyModel(m))
+      .catch(() => {
+        // si falla, se queda con lo que ya había en memoria
+      });
+  }, [userId, applyModel]);
+
+  return { model, loading, hasGoal, goalType, metric, evaluation, evalLoading, history, progress, applyModel, refresh, reload };
 }

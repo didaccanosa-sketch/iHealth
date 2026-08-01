@@ -1,6 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, ActivityIndicator, Alert } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Screen } from '../../components/Screen';
 import { FadeIn } from '../../components/FadeIn';
 import { useAppTheme } from '../../lib/theme-context';
@@ -81,6 +81,21 @@ export default function TrainingScreen() {
       if (view === 'menu' || view === 'program') loadMenu();
     }, [view, loadMenu])
   );
+
+  // Enlace directo desde la tarjeta "YOUR PLAN" de la pantalla única
+  // (router.push('/training?open=active')) — abre el mesociclo activo
+  // directo en su sesión de hoy, sin el toque extra sobre ProgramScreen.
+  const params = useLocalSearchParams<{ open?: string }>();
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current || params.open !== 'active' || loadingMenu) return;
+    const active = mesos.find((m) => m.started && !m.finished);
+    if (active) {
+      autoOpenedRef.current = true;
+      openMeso(active.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.open, mesos, loadingMenu]);
 
   async function openMeso(id: string) {
     setSelectedId(id);

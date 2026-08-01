@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -9,11 +9,15 @@ import { useAuth } from '../../lib/auth-context';
 import { spacing } from '../../constants/theme';
 import { fetchProfile } from '../../lib/data/profile';
 import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
-import { TrackingCard } from '../../components/tracking/TrackingCard';
 import { useGoalEvaluation } from '../../components/goal/useGoalEvaluation';
 import { getStrategyRecommendationWithAdjustment } from '../../lib/data/recommendation';
 import { StrategyPlan, STATS_FOCUS_BY_GOAL } from '../../lib/engine/recommendation-engine';
-import { sendChatMessage } from '../../lib/data/chat';
+import { sendChatMessage, confirmWorkoutProposal, WorkoutProposal, confirmDietProposal, DietProposal } from '../../lib/data/chat';
+import { CLOSED_CHAT_FIELDS, isClosedChatField } from '../../lib/data/chat-options';
+import { fetchMesocycles, fetchMesocycleDetail } from '../../lib/data/workout';
+import { getSessionDef } from '../../lib/engine/workout-engine';
+
+type NextSession = { dayLabel: string; week: number; isDeload: boolean } | null;
 
 // Pantalla única (ver docs/SIMPLIFIED_VISION.md): cabecera + stats + chat.
 // El chat (v1) responde preguntas y ya registra peso/comida con una
@@ -21,7 +25,20 @@ import { sendChatMessage } from '../../lib/data/chat';
 // supabase/functions/chat-assistant. Entreno todavía no se puede registrar
 // desde aquí (se avisa en el propio chat).
 
-type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
+type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  proposal?: WorkoutProposal | null;
+  proposalResolved?: boolean; // true tras confirmar/cancelar — deja de mostrar los botones
+  dietProposal?: DietProposal | null;
+  dietProposalResolved?: boolean;
+  // Campo cerrado que el chat está preguntando ahora mismo (ver
+  // lib/data/chat-options.ts) — se muestra como botones, nunca junto a otra
+  // pregunta. Null/undefined si no hay pregunta pendiente en este mensaje.
+  askField?: string | null;
+  askFieldResolved?: boolean;
+};
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -38,18 +55,45 @@ export default function TodayScreen() {
 
   const [name, setName] = useState<string | null>(null);
   const [plan, setPlan] = useState<StrategyPlan | null>(null);
+  const [nextSession, setNextSession] = useState<NextSession>(null);
+  const [hasActiveMeso, setHasActiveMeso] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  // Mensaje de identidad faltante — no pasa por la IA, solo una vez por
+  // sesión (ver docs/SIMPLIFIED_VISION.md).
+  const identityPromptShownRef = useRef(false);
+  const redirectedToOnboardingRef = useRef(false);
+  // El chat no se guarda — solo lo que registra (peso, comidas, objetivo...).
+  // Cada día empieza en blanco; esto es lo que detecta el cambio de día.
+  const chatDayRef = useRef(new Date().toISOString().slice(0, 10));
 
-  const { goalType, refresh: refreshGoal } = useGoalEvaluation(userId);
+  const { goalType, hasGoal, loading: goalLoading, reload: reloadGoal } = useGoalEvaluation(userId);
 
   const load = useCallback(async () => {
     const profile = await fetchProfile(userId).catch(() => null);
     setName(profile?.name || null);
     const result = await getStrategyRecommendationWithAdjustment(userId).catch(() => null);
     setPlan(result?.plan ?? null);
+    setLoaded(true);
+
+    // Enlace a "seguir tu plan" — se perdió al quitar las pestañas, se
+    // repone aquí (ver tarea "Enlace a seguir tu plan").
+    const mesos = await fetchMesocycles(userId).catch(() => []);
+    const active = mesos.find((m) => m.started && !m.finished);
+    if (active) {
+      setHasActiveMeso(true);
+      const detail = await fetchMesocycleDetail(active.id).catch(() => null);
+      if (detail) {
+        const def = getSessionDef(detail, detail.current_index);
+        setNextSession({ dayLabel: def.dayLabel, week: def.week, isDeload: def.isDeload });
+      }
+    } else {
+      setHasActiveMeso(false);
+      setNextSession(null);
+    }
     // Bucle de adherencia (ver docs/SIMPLIFIED_VISION.md): si el motor acaba
     // de reajustar las calorías solo, se avisa como mensaje del asistente en
     // vez de en silencio — nunca dos veces la misma razón en la conversación.
@@ -62,35 +106,191 @@ export default function TodayScreen() {
     }
   }, [userId]);
 
-  const handleSend = useCallback(async () => {
-    const text = draft.trim();
-    if (!text || sending) return;
-    setDraft('');
-    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', text }]);
-    setSending(true);
-    try {
-      const result = await sendChatMessage(userId, text);
-      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', text: result.reply }]);
-      // Un registro (peso/comida) puede haber cambiado el objetivo/plan —
-      // refrescamos la franja de stats para que se note sin recargar.
-      load();
-      refreshGoal();
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: `a-${Date.now()}`, role: 'assistant', text: 'No he podido responder — inténtalo de nuevo en un momento.' },
-      ]);
-    } finally {
-      setSending(false);
-      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
-    }
-  }, [draft, sending, userId, load, refreshGoal]);
+  const handleSend = useCallback(
+    async (override?: string) => {
+      const text = (override ?? draft).trim();
+      if (!text || sending) return;
+      setDraft('');
+      setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', text }]);
+      setSending(true);
+      try {
+        const result = await sendChatMessage(
+          userId,
+          text,
+          messages.map((m) => ({ role: m.role, text: m.text }))
+        );
+        setMessages((prev) => {
+          // Una propuesta nueva sustituye a la anterior sin pedir cancelarla a
+          // mano — así "cambia esto" funciona hablando, sin fricción (ver
+          // conversación sobre editar la rutina/el menú antes de crearlos).
+          let next = prev;
+          if (result.proposal) next = next.map((m) => (m.proposal && !m.proposalResolved ? { ...m, proposalResolved: true } : m));
+          if (result.dietProposal) next = next.map((m) => (m.dietProposal && !m.dietProposalResolved ? { ...m, dietProposalResolved: true } : m));
+          return [
+            ...next,
+            {
+              id: `a-${Date.now()}`,
+              role: 'assistant',
+              text: result.reply,
+              proposal: result.proposal ?? null,
+              dietProposal: result.dietProposal ?? null,
+              askField: result.askField ?? null,
+            },
+          ];
+        });
+        // Un registro (peso/comida/objetivo/identidad) puede haber cambiado el
+        // plan — reload() vuelve a leer de Supabase (no reusa el modelo en
+        // memoria, que puede estar desactualizado si el chat acaba de escribir
+        // el objetivo/identidad por un camino distinto al de este hook).
+        load();
+        reloadGoal();
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: 'assistant', text: 'No he podido responder — inténtalo de nuevo en un momento.' },
+        ]);
+      } finally {
+        setSending(false);
+      }
+    },
+    [draft, sending, userId, load, reloadGoal, messages]
+  );
+
+  // Botón de una pregunta de opciones cerradas (ver lib/data/chat-options.ts)
+  // — envía la opción elegida como si el usuario la hubiera escrito, sin
+  // dejarle teclear. Nunca hay dos preguntas de este tipo abiertas a la vez.
+  const handleSelectChatOption = useCallback(
+    (messageId: string, label: string) => {
+      if (sending) return;
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, askFieldResolved: true } : m)));
+      handleSend(label);
+    },
+    [sending, handleSend]
+  );
+
+  const resolveProposal = useCallback((messageId: string) => {
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, proposalResolved: true } : m)));
+  }, []);
+
+  const handleConfirmProposal = useCallback(
+    async (messageId: string, proposal: WorkoutProposal) => {
+      resolveProposal(messageId);
+      setSending(true);
+      try {
+        await confirmWorkoutProposal(userId, proposal.input);
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: 'assistant', text: '¡Listo! Ya tienes tu plan activo — puedes seguirlo desde la tarjeta de arriba.' },
+        ]);
+        load();
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: 'assistant', text: 'No he podido crear el plan — inténtalo de nuevo en un momento.' },
+        ]);
+      } finally {
+        setSending(false);
+      }
+    },
+    [userId, load, resolveProposal]
+  );
+
+  const handleCancelProposal = useCallback(
+    (messageId: string) => {
+      resolveProposal(messageId);
+      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', text: 'Vale, no la creo.' }]);
+    },
+    [resolveProposal]
+  );
+
+  const resolveDietProposal = useCallback((messageId: string) => {
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, dietProposalResolved: true } : m)));
+  }, []);
+
+  const handleConfirmDietProposal = useCallback(
+    async (messageId: string, dietProposal: DietProposal) => {
+      resolveDietProposal(messageId);
+      setSending(true);
+      try {
+        const name = `Chat - ${new Date().toLocaleDateString()}`;
+        await confirmDietProposal(userId, dietProposal.plan, name);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            text: `Guardado como plantilla "${name}" — aplícala desde Nutrition cuando quieras (comida a comida o de golpe).`,
+          },
+        ]);
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: 'assistant', text: 'No he podido guardar el menú — inténtalo de nuevo en un momento.' },
+        ]);
+      } finally {
+        setSending(false);
+      }
+    },
+    [userId, resolveDietProposal]
+  );
+
+  const handleCancelDietProposal = useCallback(
+    (messageId: string) => {
+      resolveDietProposal(messageId);
+      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', text: 'Vale, no lo guardo.' }]);
+    },
+    [resolveDietProposal]
+  );
 
   useFocusEffect(
     useCallback(() => {
+      const today = new Date().toISOString().slice(0, 10);
+      if (chatDayRef.current !== today) {
+        chatDayRef.current = today;
+        setMessages([]);
+        identityPromptShownRef.current = false;
+      }
       load();
     }, [load])
   );
+
+  // Auto-scroll: cualquier mensaje nuevo (tuyo, del asistente, o uno que
+  // aparece solo como el aviso de ajuste de calorías) baja el chat del todo
+  // — nunca hace falta hacerlo a mano.
+  useEffect(() => {
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  }, [messages.length]);
+
+  // Onboarding real: la primera vez (sin objetivo confirmado) se manda a
+  // /onboarding en vez de mostrar esta pantalla vacía — ver
+  // docs/SIMPLIFIED_VISION.md. Ya no se puede saltar (el onboarding exige
+  // perfil completo antes de dejar continuar), así que basta con mirar si
+  // hay objetivo. Si ya hay objetivo pero falta identidad básica (caso raro
+  // hoy, pero posible en cuentas de antes de este cambio), se pregunta
+  // desde esta pantalla más abajo.
+  useEffect(() => {
+    if (goalLoading || redirectedToOnboardingRef.current) return;
+    if (!hasGoal) {
+      redirectedToOnboardingRef.current = true;
+      router.replace('/onboarding');
+    }
+  }, [goalLoading, hasGoal, router]);
+
+  useEffect(() => {
+    if (!loaded || !plan || identityPromptShownRef.current) return;
+    const missingIdentity = plan.explanations.nutrition.some((s) => s.startsWith('Todavía no tenemos tu edad'));
+    if (missingIdentity) {
+      identityPromptShownRef.current = true;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `identity-${Date.now()}`,
+          role: 'assistant',
+          text: 'Para calcular esto a tu medida me faltan un par de datos de tu perfil — ¿cuántos años tienes, tu sexo, tu altura y tu peso actual?',
+        },
+      ]);
+    }
+  }, [loaded, plan]);
 
   const initial = (name || session?.user.email || '?').trim().charAt(0).toUpperCase();
 
@@ -141,15 +341,17 @@ export default function TodayScreen() {
           <GoalSummaryCard />
 
           {plan && focusDomain === 'nutrition' && (
-            <Card>
-              <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>
-                TODAY'S TARGET
-              </Text>
-              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>
-                {plan.nutrition.kcal} kcal · {plan.nutrition.protein_g}g protein
-              </Text>
-              <Text style={{ color: colors.text2, fontSize: 12, marginTop: 2 }}>{plan.nutrition.mealsPerDay} meals/day</Text>
-            </Card>
+            <Pressable onPress={() => router.push('/nutrition')}>
+              <Card>
+                <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>
+                  TODAY'S TARGET
+                </Text>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>
+                  {plan.nutrition.kcal} kcal · {plan.nutrition.protein_g}g protein
+                </Text>
+                <Text style={{ color: colors.text2, fontSize: 12, marginTop: 2 }}>{plan.nutrition.mealsPerDay} meals/day · Tap for details</Text>
+              </Card>
+            </Pressable>
           )}
 
           {plan && focusDomain === 'training' && (
@@ -164,7 +366,35 @@ export default function TodayScreen() {
             </Card>
           )}
 
-          <TrackingCard />
+          {hasActiveMeso && nextSession ? (
+            <Pressable onPress={() => router.push('/training?open=active')}>
+              <Card>
+                <Text style={{ color: colors.text2, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>
+                  YOUR PLAN
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Feather name="activity" size={18} color={colors.accent} />
+                  <View>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }} numberOfLines={1}>
+                      {nextSession.dayLabel}
+                    </Text>
+                    <Text style={{ color: colors.text2, fontSize: 11, marginTop: 1 }}>
+                      Week {nextSession.week}
+                      {nextSession.isDeload ? ' · Deload' : ''} · Tap to continue
+                    </Text>
+                  </View>
+                </View>
+              </Card>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => router.push('/training')}>
+              <Card style={{ borderStyle: 'dashed' }}>
+                <Text style={{ color: colors.text2, fontSize: 12, textAlign: 'center' }}>
+                  No active training plan — tap to start one.
+                </Text>
+              </Card>
+            </Pressable>
+          )}
         </View>
 
         {/* CHAT — v1: responde y ya registra peso/comida (ver lib/data/chat.ts) */}
@@ -195,6 +425,77 @@ export default function TodayScreen() {
                 }}
               >
                 <Text style={{ color: m.role === 'user' ? '#fff' : colors.text, fontSize: 14, lineHeight: 19 }}>{m.text}</Text>
+
+                {isClosedChatField(m.askField) && !m.askFieldResolved && (
+                  <View style={{ marginTop: spacing.sm, gap: 6 }}>
+                    {CLOSED_CHAT_FIELDS[m.askField].map((opt) => (
+                      <Pressable
+                        key={String(opt.value)}
+                        onPress={() => handleSelectChatOption(m.id, opt.label)}
+                        disabled={sending}
+                        style={{
+                          backgroundColor: colors.surface,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 9,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>{opt.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+
+                {m.proposal && !m.proposalResolved && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <Text style={{ color: colors.text2, fontSize: 12, lineHeight: 17, marginBottom: spacing.sm }}>
+                      {m.proposal.summary}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                      <Pressable
+                        onPress={() => handleConfirmProposal(m.id, m.proposal as WorkoutProposal)}
+                        style={{ backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Crear plan</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleCancelProposal(m.id)}
+                        style={{ backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}
+                      >
+                        <Text style={{ color: colors.text2, fontWeight: '700', fontSize: 12 }}>Cancelar</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                {m.dietProposal && !m.dietProposalResolved && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    {m.dietProposal.plan.meals.map((meal) => (
+                      <Text key={meal.slot} style={{ color: colors.text2, fontSize: 12, lineHeight: 17, marginBottom: 4 }}>
+                        Comida {meal.slot}: {meal.description} — {meal.kcal} kcal / {meal.protein_g}g proteína
+                      </Text>
+                    ))}
+                    <Text style={{ color: colors.text2, fontSize: 12, lineHeight: 17, marginTop: 2, marginBottom: spacing.sm, fontStyle: 'italic' }}>
+                      {m.dietProposal.summary}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                      <Pressable
+                        onPress={() => handleConfirmDietProposal(m.id, m.dietProposal as DietProposal)}
+                        style={{ backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Guardar menú</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleCancelDietProposal(m.id)}
+                        style={{ backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}
+                      >
+                        <Text style={{ color: colors.text2, fontWeight: '700', fontSize: 12 }}>Cancelar</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
               </View>
             ))
           )}
@@ -218,7 +519,7 @@ export default function TodayScreen() {
             onChangeText={setDraft}
             placeholder="Escribe aquí…"
             placeholderTextColor={colors.text2}
-            onSubmitEditing={handleSend}
+            onSubmitEditing={() => handleSend()}
             editable={!sending}
             style={{
               flex: 1,
@@ -231,7 +532,7 @@ export default function TodayScreen() {
             }}
           />
           <Pressable
-            onPress={handleSend}
+            onPress={() => handleSend()}
             disabled={sending || !draft.trim()}
             style={{
               width: 40,

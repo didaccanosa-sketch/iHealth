@@ -155,7 +155,7 @@ export function MesoWizard({
 
   const suggestions = useMemo(() => {
     if (!exGroup) return [];
-    const list = EXERCISE_DB[exGroup] || [];
+    const list = (EXERCISE_DB[exGroup] || []).map((e) => e.name);
     const q = query.trim().toLowerCase();
     return (q ? list.filter((n) => n.toLowerCase().includes(q)) : list).slice(0, 8);
   }, [exGroup, query]);

@@ -18,6 +18,7 @@ import { radius, spacing } from '../constants/theme';
 import { loadUserModel, saveUserModel, syncIdentityToLegacyProfile } from '../features/profile/data/user-model-data';
 import { setField } from '../features/profile/engine/user-model';
 import type { Sex, UserModelData } from '../features/profile/engine/types';
+import { deleteAccount } from '../lib/data/account';
 
 const SEX_OPTIONS: { label: string; value: Sex }[] = [
   { label: 'Hombre', value: 'male' },
@@ -30,6 +31,7 @@ const SETTINGS_ROWS = [
   { icon: 'lock' as const, label: 'Password' },
   { icon: 'moon' as const, label: 'Theme' },
   { icon: 'log-out' as const, label: 'Log out' },
+  { icon: 'trash-2' as const, label: 'Delete account' },
 ];
 
 function InfoRow({
@@ -109,6 +111,37 @@ export default function ProfileScreen() {
       ]);
     }
   }, [signOut, router]);
+
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  // Borra la cuenta y absolutamente todo lo asociado (ver
+  // supabase/functions/delete-account) — irreversible, por eso el aviso es
+  // más explícito que el de cerrar sesión.
+  const handleDeleteAccount = useCallback(() => {
+    const doDelete = async () => {
+      setDeletingAccount(true);
+      try {
+        await deleteAccount();
+        router.replace('/');
+      } catch {
+        setDeletingAccount(false);
+        if (Platform.OS === 'web') {
+          window.alert('No se ha podido borrar la cuenta — inténtalo de nuevo en un momento.');
+        } else {
+          Alert.alert('Error', 'No se ha podido borrar la cuenta — inténtalo de nuevo en un momento.');
+        }
+      }
+    };
+    const message = 'Esto borra tu cuenta y todos tus datos (objetivo, peso, comidas, entrenos...) para siempre. No se puede deshacer.';
+    if (Platform.OS === 'web') {
+      if (window.confirm(message)) doDelete();
+    } else {
+      Alert.alert('Borrar cuenta', message, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Borrar cuenta', style: 'destructive', onPress: doDelete },
+      ]);
+    }
+  }, [router]);
 
   const [model, setModel] = useState<UserModelData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -383,23 +416,29 @@ export default function ProfileScreen() {
           </Text>
           {SETTINGS_ROWS.map((row, i) => {
             const isLogout = row.label === 'Log out';
-            const Row = isLogout ? Pressable : View;
+            const isDelete = row.label === 'Delete account';
+            const isActive = isLogout || isDelete;
+            const Row = isActive ? Pressable : View;
+            const onPress = isLogout ? handleLogout : isDelete ? handleDeleteAccount : undefined;
             return (
               <Row
                 key={row.label}
-                onPress={isLogout ? handleLogout : undefined}
+                onPress={onPress}
+                disabled={isDelete && deletingAccount}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
                   paddingVertical: 12,
                   borderTopWidth: i === 0 ? 0 : 1,
                   borderTopColor: colors.border,
-                  opacity: isLogout ? 1 : 0.45,
+                  opacity: isActive ? (isDelete && deletingAccount ? 0.5 : 1) : 0.45,
                 }}
               >
-                <Feather name={row.icon} size={16} color={isLogout ? colors.danger : colors.text2} style={{ marginRight: spacing.sm }} />
-                <Text style={{ color: isLogout ? colors.danger : colors.text, fontSize: 14, flex: 1 }}>{row.label}</Text>
-                {!isLogout && <Text style={{ color: colors.text2, fontSize: 10, fontWeight: '700' }}>COMING SOON</Text>}
+                <Feather name={row.icon} size={16} color={isActive ? colors.danger : colors.text2} style={{ marginRight: spacing.sm }} />
+                <Text style={{ color: isActive ? colors.danger : colors.text, fontSize: 14, flex: 1 }}>
+                  {isDelete && deletingAccount ? 'Deleting…' : row.label}
+                </Text>
+                {!isActive && <Text style={{ color: colors.text2, fontSize: 10, fontWeight: '700' }}>COMING SOON</Text>}
               </Row>
             );
           })}

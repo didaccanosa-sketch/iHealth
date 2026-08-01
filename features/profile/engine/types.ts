@@ -127,10 +127,13 @@ export type MotivationModel = {
 };
 
 // ─── PREFERENCES — cómo quiere el usuario que la app se comporte con él ────
+export type HelpArea = 'training' | 'nutrition' | 'weight_tracking' | 'all';
+
 export type PreferencesModel = {
   coachingTone: Field<string[]>; // texto libre analizado con IA en tags
   unitSystem: Field<'kg' | 'lb'>;
   reminderTime: Field<'morning' | 'midday' | 'afternoon' | 'evening'>;
+  helpAreas: Field<HelpArea[]>; // en qué quiere que le ayude el chat sobre todo — se pregunta una vez, en el onboarding, con opciones cerradas (ver app/onboarding.tsx)
 };
 
 // ─── BODY — solo lo estético/estructural que el propio usuario define como
@@ -235,6 +238,7 @@ export function createEmptyUserModel(): UserModelData {
       coachingTone: unknownField(),
       unitSystem: unknownField(),
       reminderTime: unknownField(),
+      helpAreas: unknownField(),
     },
     health: {},
   };

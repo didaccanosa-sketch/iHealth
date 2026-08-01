@@ -1,8 +1,17 @@
 import { MuscleGroup } from './types';
-import { EXERCISE_DB } from './exercise-db';
+import { EXERCISE_DB, EQUIPMENT_ELIGIBLE, EquipmentLevel } from './exercise-db';
 
 type TemplateExercise = { name: string; muscle_group: MuscleGroup; sets: number; reps: string };
 export type TemplateDay = { label: string; exercises: TemplateExercise[] };
+
+// Preferencias fijas del perfil que puede tener en cuenta el generador —
+// ninguna se inventa aquí, todas vienen ya guardadas en el User Model
+// (TrainingModel.equipment/preferredExercises/dislikedExercises).
+export type ExercisePreferences = {
+  equipmentLevel: EquipmentLevel | null;
+  preferredExercises: string[];
+  dislikedExercises: string[];
+};
 
 type TemplateDayTheme = { label: string; groups: MuscleGroup[]; emphasis?: MuscleGroup[] };
 
@@ -26,19 +35,36 @@ const GROUP_LABELS: Record<MuscleGroup, string> = {
 
 const LOWER_BODY_REP_RANGE = ['cuadriceps', 'isquios', 'gluteo', 'espalda', 'pecho'];
 
-function pickExercises(group: MuscleGroup, count: number, sets: number): TemplateExercise[] {
-  const list = EXERCISE_DB[group] || [];
+function pickExercises(group: MuscleGroup, count: number, sets: number, prefs?: ExercisePreferences): TemplateExercise[] {
+  const all = EXERCISE_DB[group] || [];
+  const disliked = new Set((prefs?.dislikedExercises || []).map((n) => n.toLowerCase()));
+  const preferred = new Set((prefs?.preferredExercises || []).map((n) => n.toLowerCase()));
+
+  let pool = all.filter((e) => !disliked.has(e.name.toLowerCase()));
+  if (prefs?.equipmentLevel) {
+    const eligible = EQUIPMENT_ELIGIBLE[prefs.equipmentLevel];
+    const withEquipment = pool.filter((e) => eligible.includes(e.equipment));
+    // Si filtrar por equipo deja el grupo sin ejercicios (catálogo corto en
+    // ese grupo), mejor mantener alguno aunque no sea ideal que dejar el día
+    // vacío — nunca bloquea la rutina entera.
+    if (withEquipment.length > 0) pool = withEquipment;
+  }
+
+  // Los preferidos van primero (dentro del mismo orden del catálogo), el
+  // resto detrás — nunca se inventa un ejercicio nuevo, solo se reordena.
+  pool = [...pool.filter((e) => preferred.has(e.name.toLowerCase())), ...pool.filter((e) => !preferred.has(e.name.toLowerCase()))];
+
   const reps = LOWER_BODY_REP_RANGE.includes(group) ? '6-10' : '8-12';
-  return list.slice(0, count).map((name) => ({ name, muscle_group: group, sets, reps }));
+  return pool.slice(0, count).map((e) => ({ name: e.name, muscle_group: group, sets, reps }));
 }
 
-function buildDayFromTheme(theme: TemplateDayTheme): TemplateDay {
+function buildDayFromTheme(theme: TemplateDayTheme, prefs?: ExercisePreferences): TemplateDay {
   const groups = theme.groups;
   const perGroup = groups.length <= 2 ? 3 : groups.length <= 4 ? 2 : 1;
   const exercises: TemplateExercise[] = [];
   groups.forEach((g) => {
     const isEmphasis = !!theme.emphasis?.includes(g);
-    exercises.push(...pickExercises(g, perGroup, isEmphasis ? 4 : 3));
+    exercises.push(...pickExercises(g, perGroup, isEmphasis ? 4 : 3, prefs));
   });
   return { label: theme.label, exercises };
 }
@@ -169,14 +195,14 @@ export function listBuiltinTemplates(): MesoTemplateDef[] {
 export function instantiateBuiltinTemplate(id: string): TemplateDay[] {
   const def = CATALOG_DEFS.find((d) => d.id === id);
   if (!def) throw new Error('Template not found');
-  return def.themes.map(buildDayFromTheme);
+  return def.themes.map((t) => buildDayFromTheme(t));
 }
 
 // Generador: reparte los grandes grupos musculares en `daysPerWeek` días, dando
 // una frecuencia extra (2x/semana) a los grupos priorizados.
 const BIG_GROUPS: MuscleGroup[] = ['pecho', 'espalda', 'hombro', 'biceps', 'triceps', 'cuadriceps', 'isquios', 'gluteo'];
 
-export function buildFocusSplit(daysPerWeek: number, priority: MuscleGroup[]): TemplateDay[] {
+export function buildFocusSplit(daysPerWeek: number, priority: MuscleGroup[], prefs?: ExercisePreferences): TemplateDay[] {
   const slots: MuscleGroup[] = [];
   BIG_GROUPS.forEach((g) => {
     const count = priority.includes(g) ? 2 : 1;
@@ -231,5 +257,5 @@ export function buildFocusSplit(daysPerWeek: number, priority: MuscleGroup[]): T
     days.push({ label: 'Core & Mobility', groups: ['core'] });
   }
 
-  return days.map(buildDayFromTheme);
+  return days.map((d) => buildDayFromTheme(d, prefs));
 }
