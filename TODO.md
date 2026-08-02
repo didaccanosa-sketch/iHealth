@@ -1,5 +1,29 @@
 # To-do — iHealth
 
+## ✅ Hecho hoy (2026-08-02 — chat: preguntas fiables, revisión antes de crear)
+- [x] Regla general para el chat: nunca combina dos preguntas en un mismo
+      mensaje, y si la respuesta es de opciones cerradas se pide con
+      botones en vez de texto libre (`lib/data/chat-options.ts`)
+- [x] Fix: `chat-assistant` a veces devolvía texto suelto en vez de JSON en
+      preguntas encadenadas, rompiendo el chat (error 500) — prompt
+      reforzado + fallback si el JSON no parsea
+- [x] La secuencia de preguntas de rutina (días/equipo/gustos) y de menú
+      (comidas/día) pasa a decidirla el código, no la memoria de la IA —
+      antes se saltaba o repetía preguntas al encadenar varias
+- [x] `daysPerWeek` y `mealsPerDay` ahora se guardan en el perfil (antes se
+      usaban al vuelo, sin persistir)
+- [x] Nueva pregunta con botones antes de generar una rutina: qué grupo
+      muscular priorizar, o ninguno
+- [x] La rutina del chat ya no se crea directa con un botón — abre el
+      wizard de Training (el mismo de las rutinas manuales) para poder
+      añadir/quitar ejercicios y cambiar series/reps antes de confirmarla
+- [ ] **Pendiente: redeploy de `chat-assistant`** tras cada cambio de
+      prompt (`supabase functions deploy chat-assistant`)
+- [ ] Pendiente (aparcado para otra sesión): "menú con fiabilidad" — que
+      el generador de menú deje de repartir las calorías a partes iguales
+      entre comidas (ver `docs/SIMPLIFIED_VISION.md` → "Próxima entrega
+      planificada")
+
 ## ✅ Arreglado hoy (sesión de interfaz/bugs de Training y Nutrition)
 - [x] Training: `loadMenu`/`openMeso` sin manejo de errores (se quedaba cargando para siempre en vez de avisar)
 - [x] Bug de texto suelto en el buscador de ejercicios del wizard (`query.trim()` como string vacío)
