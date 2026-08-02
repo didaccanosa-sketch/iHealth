@@ -20,6 +20,35 @@ Format:
 
 ---
 
+## 2026-08-02 (secuencia de preguntas de rutina/menú pasa a ser 100% código, revisión antes de crear)
+- La secuencia de preguntas de la rutina (días/equipo/gustos) y del menú
+  (comidas/día) dependía de que la IA recordara bien el historial de la
+  conversación para saber qué ya había preguntado — poco fiable a partir de
+  3-4 preguntas seguidas (se veía en real: se saltaba gustos/enfoque).
+  Ahora esa decisión es 100% código (`lib/data/chat.ts`,
+  `sendChatMessage`): tras guardar lo que dé cada mensaje, se relee el
+  perfil guardado y se pregunta lo primero que falte de verdad — la IA solo
+  clasifica intención y extrae datos, ya no decide cuándo preguntar ni
+  redacta la pregunta (texto fijo en `TRAINING_QUESTION_TEXT`/
+  `MEALS_PER_DAY_QUESTION_TEXT`). Prompt de
+  `supabase/functions/chat-assistant/index.ts` simplificado a la vez.
+  **Pendiente: redeploy de `chat-assistant`.**
+- `daysPerWeek` y `mealsPerDay` ahora se guardan en el perfil
+  (`training.daysPerWeek`, `nutrition.mealsPerDay`) igual que
+  equipo/gustos — antes se usaban al vuelo sin persistir, así que se
+  "olvidaban" entre preguntas.
+- Nueva pregunta, con botones, antes de generar una rutina: qué grupo
+  muscular priorizar (o ninguno) — antes solo se tenía en cuenta si se
+  mencionaba sin que se preguntara. Al tocar un botón no vuelve a pasar por
+  la IA: genera directo (`finalizeWorkoutProposal` en `lib/data/chat.ts`).
+- La rutina generada por el chat ya no se crea directa al pulsar un botón
+  — ahora abre el wizard de Training (mismo sitio que las rutinas
+  manuales, reutilizado tal cual) para poder añadir/quitar ejercicios y
+  cambiar series/reps antes de confirmarla de verdad. Traspaso vía
+  `lib/data/pending-workout-draft.ts` (en memoria) +
+  `router.push('/training?open=wizard')`, leído en
+  `app/(tabs)/training.tsx`.
+
 ## 2026-08-02 (fix: chat-assistant se salía del JSON en preguntas encadenadas)
 - Al alargar el prompt para la regla de "una pregunta a la vez", la IA a
   veces devolvía la pregunta como texto suelto en vez de dentro del JSON

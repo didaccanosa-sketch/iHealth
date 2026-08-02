@@ -12,8 +12,9 @@ import { GoalSummaryCard } from '../../components/goal/GoalSummaryCard';
 import { useGoalEvaluation } from '../../components/goal/useGoalEvaluation';
 import { getStrategyRecommendationWithAdjustment } from '../../lib/data/recommendation';
 import { StrategyPlan, STATS_FOCUS_BY_GOAL } from '../../lib/engine/recommendation-engine';
-import { sendChatMessage, confirmWorkoutProposal, WorkoutProposal, confirmDietProposal, DietProposal } from '../../lib/data/chat';
-import { CLOSED_CHAT_FIELDS, isClosedChatField } from '../../lib/data/chat-options';
+import { sendChatMessage, finalizeWorkoutProposal, WorkoutProposal, confirmDietProposal, DietProposal } from '../../lib/data/chat';
+import { CLOSED_CHAT_FIELDS, isClosedChatField, FOCUS_MUSCLE_OPTIONS } from '../../lib/data/chat-options';
+import { setPendingWorkoutDraft } from '../../lib/data/pending-workout-draft';
 import { fetchMesocycles, fetchMesocycleDetail } from '../../lib/data/workout';
 import { getSessionDef } from '../../lib/engine/workout-engine';
 
@@ -168,31 +169,51 @@ export default function TodayScreen() {
     [sending, handleSend]
   );
 
-  const resolveProposal = useCallback((messageId: string) => {
-    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, proposalResolved: true } : m)));
-  }, []);
-
-  const handleConfirmProposal = useCallback(
-    async (messageId: string, proposal: WorkoutProposal) => {
-      resolveProposal(messageId);
+  // Botón de la última pregunta antes de generar una rutina (qué grupo
+  // priorizar) — a diferencia de las demás, esta no vuelve a pasar por la
+  // IA: en este punto ya está todo lo demás confirmado, así que se genera
+  // la propuesta directa (ver finalizeWorkoutProposal en lib/data/chat.ts).
+  const handleSelectFocus = useCallback(
+    async (messageId: string, label: string, groups: string[]) => {
+      if (sending) return;
+      setMessages((prev) => [
+        ...prev.map((m) => (m.id === messageId ? { ...m, askFieldResolved: true } : m)),
+        { id: `u-${Date.now()}`, role: 'user', text: label },
+      ]);
       setSending(true);
       try {
-        await confirmWorkoutProposal(userId, proposal.input);
-        setMessages((prev) => [
-          ...prev,
-          { id: `a-${Date.now()}`, role: 'assistant', text: '¡Listo! Ya tienes tu plan activo — puedes seguirlo desde la tarjeta de arriba.' },
-        ]);
-        load();
+        const result = await finalizeWorkoutProposal(userId, groups);
+        setMessages((prev) => {
+          const next = prev.map((m) => (m.proposal && !m.proposalResolved ? { ...m, proposalResolved: true } : m));
+          return [...next, { id: `a-${Date.now()}`, role: 'assistant', text: result.reply, proposal: result.proposal ?? null }];
+        });
       } catch {
         setMessages((prev) => [
           ...prev,
-          { id: `a-${Date.now()}`, role: 'assistant', text: 'No he podido crear el plan — inténtalo de nuevo en un momento.' },
+          { id: `a-${Date.now()}`, role: 'assistant', text: 'No he podido preparar una propuesta ahora mismo — inténtalo de nuevo en un momento.' },
         ]);
       } finally {
         setSending(false);
       }
     },
-    [userId, load, resolveProposal]
+    [sending, userId]
+  );
+
+  const resolveProposal = useCallback((messageId: string) => {
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, proposalResolved: true } : m)));
+  }, []);
+
+  // La rutina nunca se crea directa desde el chat — se manda al wizard de
+  // Training (mismo sitio donde se editan las rutinas manuales) para que el
+  // usuario pueda añadir/quitar ejercicios y cambiar series/reps antes de
+  // confirmarla de verdad (ver lib/data/pending-workout-draft.ts).
+  const handleReviewProposal = useCallback(
+    (messageId: string, proposal: WorkoutProposal) => {
+      resolveProposal(messageId);
+      setPendingWorkoutDraft(proposal.input);
+      router.push('/training?open=wizard');
+    },
+    [resolveProposal, router]
   );
 
   const handleCancelProposal = useCallback(
@@ -448,6 +469,28 @@ export default function TodayScreen() {
                   </View>
                 )}
 
+                {m.askField === 'focusMuscleGroups' && !m.askFieldResolved && (
+                  <View style={{ marginTop: spacing.sm, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {FOCUS_MUSCLE_OPTIONS.map((opt) => (
+                      <Pressable
+                        key={opt.label}
+                        onPress={() => handleSelectFocus(m.id, opt.label, opt.value)}
+                        disabled={sending}
+                        style={{
+                          backgroundColor: colors.surface,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 9,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>{opt.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+
                 {m.proposal && !m.proposalResolved && (
                   <View style={{ marginTop: spacing.sm }}>
                     <Text style={{ color: colors.text2, fontSize: 12, lineHeight: 17, marginBottom: spacing.sm }}>
@@ -455,10 +498,10 @@ export default function TodayScreen() {
                     </Text>
                     <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                       <Pressable
-                        onPress={() => handleConfirmProposal(m.id, m.proposal as WorkoutProposal)}
+                        onPress={() => handleReviewProposal(m.id, m.proposal as WorkoutProposal)}
                         style={{ backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}
                       >
-                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Crear plan</Text>
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Revisar y editar</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => handleCancelProposal(m.id)}

@@ -37,6 +37,7 @@ import { Mesocycle, MesoSession } from '../../lib/engine/types';
 import { totalSessions, estimate1RM } from '../../lib/engine/workout-engine';
 import { buildFocusSplit } from '../../lib/engine/meso-templates';
 import { getStrategyRecommendation } from '../../lib/data/recommendation';
+import { consumePendingWorkoutDraft } from '../../lib/data/pending-workout-draft';
 
 type View = 'program' | 'menu' | 'createChoice' | 'templatePicker' | 'wizard' | 'session' | 'cardio';
 
@@ -96,6 +97,22 @@ export default function TrainingScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.open, mesos, loadingMenu]);
+
+  // Enlace desde la propuesta de rutina del chat — llega con un borrador ya
+  // generado (ver lib/data/pending-workout-draft.ts) y se abre directo en el
+  // wizard, en el paso de revisión (MesoWizard salta a "step 3" cuando
+  // recibe "initial"), para que el usuario pueda editar ejercicios/sets/reps
+  // antes de crear nada. Nunca se crea sin pasar por aquí.
+  const wizardDraftOpenedRef = useRef(false);
+  useEffect(() => {
+    if (wizardDraftOpenedRef.current || params.open !== 'wizard') return;
+    const draft = consumePendingWorkoutDraft();
+    if (draft) {
+      wizardDraftOpenedRef.current = true;
+      setWizardInitial(draft);
+      setView('wizard');
+    }
+  }, [params.open]);
 
   async function openMeso(id: string) {
     setSelectedId(id);

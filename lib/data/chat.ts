@@ -99,10 +99,32 @@ async function buildWorkoutProposal(
   return { input, summary };
 }
 
-// El usuario confirma la propuesta desde la UI (botón, no otra vuelta por
-// IA) — se crea el mesociclo y se arranca directamente, porque la
-// confirmación en el chat ya es la revisión (mismo principio que el wizard
-// manual: nunca se guarda nada sin que el usuario lo vea antes).
+// Se llama directo desde el botón de la última pregunta (enfoque muscular,
+// ver FOCUS_QUESTION_TEXT) — no vuelve a pasar por la IA porque ya no hace
+// falta interpretar nada: días/equipo/gustos ya están confirmados en el
+// perfil y el enfoque llega tal cual del botón que se tocó. Menos una vuelta
+// a la IA, y no depende de que sepa reconocer la respuesta correctamente.
+export async function finalizeWorkoutProposal(userId: string, focusMuscleGroups: string[]): Promise<{ reply: string; proposal: WorkoutProposal | null }> {
+  const injuries = await getConfirmedInjuries(userId);
+  if (injuries) {
+    return {
+      reply: `Tienes una lesión registrada (${injuries.join(', ')}) — por precaución no te genero una rutina automática. Sigue las indicaciones de tu médico/fisio y, mientras tanto, monta tu entreno a mano desde la pantalla de Training.`,
+      proposal: null,
+    };
+  }
+  const model = await loadUserModel(userId).catch(() => null);
+  const daysPerWeek = model?.training.daysPerWeek.value ?? null;
+  const proposal = await buildWorkoutProposal(userId, daysPerWeek, focusMuscleGroups.length ? focusMuscleGroups : null);
+  if (!proposal) {
+    return { reply: 'Todavía no tienes un objetivo fijado — necesito eso primero para proponerte una rutina.', proposal: null };
+  }
+  return { reply: 'Aquí tienes la propuesta — puedes revisarla y editarla antes de crearla.', proposal };
+}
+
+// El usuario confirma que quiere seguir revisando/editando en el wizard de
+// Training (ver app/(tabs)/training.tsx y lib/data/pending-workout-draft.ts)
+// — la rutina nunca se crea directa desde aquí, esta función ya no se usa
+// desde el chat, se deja por si hace falta crear sin pasar por el wizard.
 export async function confirmWorkoutProposal(userId: string, input: NewMesoInput): Promise<void> {
   const mesoId = await createMesocycle(userId, input);
   await startMesocycle(mesoId, userId);
@@ -292,6 +314,41 @@ async function setTrainingPrefsFromChat(
   await saveUserModel(userId, next);
 }
 
+// Días/semana y comidas/día se guardan igual que equipo/gustos — una vez
+// confirmados, no se vuelven a preguntar (antes se usaban solo al vuelo,
+// sin persistir, por eso el chat podía "olvidarlos" entre preguntas).
+async function setDaysPerWeekFromChat(userId: string, daysPerWeek: number): Promise<void> {
+  const model = await loadUserModel(userId);
+  await saveUserModel(userId, setField(model, 'training', 'daysPerWeek', daysPerWeek));
+}
+
+async function setMealsPerDayFromChat(userId: string, mealsPerDay: number): Promise<void> {
+  const model = await loadUserModel(userId);
+  await saveUserModel(userId, setField(model, 'nutrition', 'mealsPerDay', mealsPerDay));
+}
+
+// Qué se pregunta por cada campo pendiente — texto fijo decidido en código,
+// nunca redactado por la IA (así no puede saltarse ni repetir una pregunta
+// por su cuenta). "daysPerWeek"/"equipment" son opciones cerradas (ver
+// lib/data/chat-options.ts, la app muestra botones); los otros dos son
+// abiertos y se preguntan tal cual, en texto libre.
+const TRAINING_QUESTION_TEXT: Record<(typeof TRAINING_PREF_KEYS)[number], string> = {
+  daysPerWeek: '¿Cuántos días a la semana quieres entrenar?',
+  equipment: '¿Qué equipo tienes disponible?',
+  preferredExercises: '¿Hay algún ejercicio que te guste especialmente y quieras que incluya?',
+  dislikedExercises: '¿Hay algún ejercicio que prefieras evitar?',
+};
+
+const MEALS_PER_DAY_QUESTION_TEXT = '¿Cuántas comidas haces al día?';
+
+// Última pregunta antes de generar la rutina — no es un hecho fijo que se
+// guarde en el perfil (puede cambiar en cada rutina que pidas), así que no
+// usa el mismo mecanismo de "confirmado/desconocido" que el resto: se
+// pregunta cada vez que falta, y se resuelve directo con botones sin pasar
+// otra vez por la IA (ver finalizeWorkoutProposal más abajo y
+// app/(tabs)/index.tsx).
+const FOCUS_QUESTION_TEXT = '¿Quieres priorizar algún grupo muscular en concreto, o sin prioridad?';
+
 // En qué quiere que le ayude el chat sobre todo — pregunta de opción
 // cerrada al final del onboarding (ver app/onboarding.tsx), se guarda
 // directo, sin pasar por la IA (mismo criterio que saveIdentity: es una
@@ -413,7 +470,33 @@ export async function sendChatMessage(userId: string, message: string, history: 
           reply: `Tienes una lesión registrada (${injuries.join(', ')}) — por precaución no te genero una rutina automática. Sigue las indicaciones de tu médico/fisio y, mientras tanto, monta tu entreno a mano desde la pantalla de Training.`,
         };
       }
-      const proposal = await buildWorkoutProposal(userId, daysPerWeek ?? null, focusMuscleGroups ?? null);
+
+      if (typeof daysPerWeek === 'number') {
+        await setDaysPerWeekFromChat(userId, daysPerWeek).catch(() => {});
+      }
+
+      // Qué falta de verdad se comprueba contra el perfil ya guardado, no
+      // contra lo que la IA cree recordar de la conversación — así nunca se
+      // salta ni repite una pregunta por un fallo de memoria de la IA (regla
+      // general, ver docs/SIMPLIFIED_VISION.md). Se pregunta de una en una,
+      // en el mismo orden de TRAINING_PREF_KEYS.
+      const freshModel = await loadUserModel(userId).catch(() => null);
+      const stillMissing = freshModel
+        ? TRAINING_PREF_KEYS.filter((key) => freshModel.training[key].status !== 'confirmed')
+        : [...TRAINING_PREF_KEYS];
+      if (stillMissing.length > 0) {
+        const field = stillMissing[0];
+        return { reply: TRAINING_QUESTION_TEXT[field], askField: field };
+      }
+
+      // Última pregunta, siempre que no venga ya dicha en este mismo mensaje
+      // (p. ej. "hazme una rutina priorizando pecho", o un ajuste tipo
+      // "cambia el enfoque a piernas" sobre una propuesta ya hecha).
+      if (!focusMuscleGroups || focusMuscleGroups.length === 0) {
+        return { reply: FOCUS_QUESTION_TEXT, askField: 'focusMuscleGroups' };
+      }
+
+      const proposal = await buildWorkoutProposal(userId, daysPerWeek ?? freshModel?.training.daysPerWeek.value ?? null, focusMuscleGroups);
       if (!proposal) {
         return { reply: 'Todavía no tienes un objetivo fijado — necesito eso primero para proponerte una rutina.' };
       }
@@ -425,7 +508,17 @@ export async function sendChatMessage(userId: string, message: string, history: 
 
   if (intent === 'propose_diet') {
     try {
-      const dietProposal = await buildDietProposal(userId, mealsPerDay ?? null);
+      if (typeof mealsPerDay === 'number') {
+        await setMealsPerDayFromChat(userId, mealsPerDay).catch(() => {});
+      }
+
+      const freshModel = await loadUserModel(userId).catch(() => null);
+      const stillMissingMeals = freshModel ? freshModel.nutrition.mealsPerDay.status !== 'confirmed' : true;
+      if (stillMissingMeals) {
+        return { reply: MEALS_PER_DAY_QUESTION_TEXT, askField: 'mealsPerDay' };
+      }
+
+      const dietProposal = await buildDietProposal(userId, mealsPerDay ?? freshModel?.nutrition.mealsPerDay.value ?? null);
       if (!dietProposal) {
         return { reply: 'Todavía no tienes un objetivo fijado — necesito eso primero para proponerte un menú.' };
       }

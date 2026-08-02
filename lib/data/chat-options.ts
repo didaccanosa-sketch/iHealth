@@ -41,3 +41,21 @@ export type ClosedChatField = keyof typeof CLOSED_CHAT_FIELDS;
 export function isClosedChatField(field: string | null | undefined): field is ClosedChatField {
   return !!field && field in CLOSED_CHAT_FIELDS;
 }
+
+// Última pregunta antes de generar una rutina (qué grupo priorizar, si
+// alguno) — es un caso aparte de CLOSED_CHAT_FIELDS: al tocar un botón no
+// se manda a la IA para interpretarlo (ver finalizeWorkoutProposal en
+// lib/data/chat.ts), se resuelve directo. Mismos valores exactos que
+// PRIORITIZABLE_GROUPS en lib/data/chat.ts — si se añade un grupo ahí, hay
+// que añadirlo aquí también.
+export const FOCUS_MUSCLE_OPTIONS: ChatOption<string[]>[] = [
+  { value: ['pecho'], label: 'Pecho' },
+  { value: ['espalda'], label: 'Espalda' },
+  { value: ['hombro'], label: 'Hombros' },
+  { value: ['biceps'], label: 'Bíceps' },
+  { value: ['triceps'], label: 'Tríceps' },
+  { value: ['cuadriceps'], label: 'Cuádriceps' },
+  { value: ['isquios'], label: 'Isquios' },
+  { value: ['gluteo'], label: 'Glúteo' },
+  { value: [], label: 'Sin prioridad' },
+];
