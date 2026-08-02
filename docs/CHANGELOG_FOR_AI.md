@@ -20,6 +20,16 @@ Format:
 
 ---
 
+## 2026-08-02 (fix: chat-assistant se salía del JSON en preguntas encadenadas)
+- Al alargar el prompt para la regla de "una pregunta a la vez", la IA a
+  veces devolvía la pregunta como texto suelto en vez de dentro del JSON
+  esperado (visto en real: segunda pregunta de una secuencia — "¿Cuántos
+  días...?" bien, pero la de equipo salía en texto plano), rompiendo el
+  parseo y devolviendo error 500 al chat. Reforzado el prompt (recordatorio
+  explícito de formato al final) y añadido fallback en
+  `supabase/functions/chat-assistant/index.ts`: si el JSON no parsea, se usa
+  el texto tal cual como respuesta normal en vez de fallar.
+
 ## 2026-08-02 (regla general: preguntas del chat de una en una, botones para opciones cerradas)
 - Nueva regla general para todo lo que el chat pregunta (no solo un caso
   puntual): nunca se combinan dos preguntas en un mismo mensaje, y si la

@@ -62,7 +62,9 @@ Rules for classification:
 
 Medical caution: if the topic touches a medical condition (diagnosis, medication, symptoms, chronic disease), be conservative in any suggestion, and clearly say this doesn't replace a healthcare professional — never diagnose or prescribe treatment. If the user asks you to propose or change a training routine while an injury/limitation is on record (from this message or recent history) and hasn't been clearly cleared by a professional for that movement, use intent "answer" instead of "propose_workout", and reply recommending they follow their physio/doctor's guidance and use the Training screen manually for now.
 
-Keep "reply" short (max ~400 characters), natural, no markdown, no bullet points, no exclamation-mark spam.`;
+Keep "reply" short (max ~400 characters), natural, no markdown, no bullet points, no exclamation-mark spam.
+
+CRITICAL — output format: your ENTIRE response must be a single JSON object matching the shape above, with the actual question or message inside "reply". Never output plain text outside that JSON, and never output just the question by itself — this applies even when you're asking a follow-up clarifying question as part of a sequence (e.g. the second or third question in a row). No markdown fences, no text before or after the JSON.`;
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -125,7 +127,18 @@ serve(async (req: Request) => {
 
     const data = await resp.json();
     const raw = (data.content[0].text as string).replace(/```json|```/g, '').trim();
-    const result = JSON.parse(raw);
+
+    let result;
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      // La IA a veces se sale del formato JSON esperado (más probable cuanto
+      // más larga/encadenada es la conversación) — en vez de romper la
+      // conversación con un error, se trata el texto tal cual como una
+      // respuesta normal. Peor caso: esa vez no salen los botones de opción
+      // cerrada y el usuario escribe la respuesta a mano.
+      result = { intent: 'answer', reply: raw, askField: null };
+    }
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
